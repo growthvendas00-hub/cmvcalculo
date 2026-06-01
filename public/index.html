@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CMV Studio</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-icon">🍔</span>
+    <div>
+      <h1>CMV Studio</h1>
+      <p>Controle de Custo de Mercadoria Vendida</p>
+    </div>
+  </div>
+  <div id="status-servidor" class="status-servidor">● Conectando…</div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="ingredientes">Ingredientes</button>
+  <button class="tab" data-tab="fichas">Fichas Técnicas</button>
+  <button class="tab" data-tab="relatorio">Relatório CMV</button>
+  <button class="tab" data-tab="compras">Compras</button>
+  <button class="tab" data-tab="custos">Custos Fixos</button>
+</nav>
+
+<!-- ══════════════════════ MÓDULO 1 — INGREDIENTES ══════════════════════ -->
+<section id="tab-ingredientes" class="tab-content active">
+  <div class="section-header">
+    <h2>Matriz de Ingredientes</h2>
+    <div style="display:flex;gap:10px">
+      <button class="btn-secondary" onclick="IngPadrao.abrirModal()">📋 Lista Padrão</button>
+      <button class="btn-primary" onclick="Ingredientes.abrirNovo()">+ Novo Ingrediente</button>
+    </div>
+  </div>
+
+  <div class="tutorial-box" id="tutorial-ingredientes">
+    <div class="tutorial-top">
+      <div class="tutorial-titulo"><span class="tutorial-icone">💡</span><strong>Como funciona o cadastro de ingredientes?</strong></div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-ingredientes')">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-corpo collapsed">
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">O QUE É</span>
+        <p>Aqui você cadastra cada insumo e <strong>quanto pagou por ele</strong>. O sistema converte tudo para um custo por grama, ml ou unidade — assim a conta da receita fica exata.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-info">
+        <span class="tutorial-label">COMO COMEÇAR RÁPIDO</span>
+        <p>Clique em <strong>📋 Lista Padrão</strong> para importar nomes comuns de hamburgueria/pizzaria. Eles entram <strong>sem preço</strong> — depois você clica em <strong>"Registrar Preço"</strong> e informa sua compra real.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-alerta">
+        <span class="tutorial-label">POR QUE IMPORTA</span>
+        <p>Errar 3g de carne por lanche parece nada, mas vira <strong>milhares de reais</strong> de prejuízo no ano. Use sua <strong>nota fiscal</strong> e capriche aqui — é a base de todo o sistema.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Ingrediente</th>
+          <th>Custo Atual</th>
+          <th>Última Compra</th>
+          <th style="text-align:right">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="lista-ingredientes">
+        <tr><td colspan="4" class="empty">Carregando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════ MÓDULO 2 — FICHAS TÉCNICAS ══════════════════════ -->
+<section id="tab-fichas" class="tab-content">
+  <div class="section-header">
+    <h2>Fichas Técnicas (Produtos)</h2>
+    <button class="btn-primary" onclick="UI.abrirModalFicha()">+ Nova Ficha</button>
+  </div>
+
+  <div class="tutorial-box" id="tutorial-fichas">
+    <div class="tutorial-top">
+      <div class="tutorial-titulo"><span class="tutorial-icone">📋</span><strong>Como montar a ficha de um produto?</strong></div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-fichas')">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-corpo collapsed">
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">O QUE É</span>
+        <p>A "receita" do produto: quais ingredientes entram, <strong>quanto de cada um</strong> (em gramas/ml/unidade), a embalagem e o <strong>Fator de Correção</strong> (perdas no preparo).</p>
+      </div>
+      <div class="tutorial-bloco tutorial-info">
+        <span class="tutorial-label">PASSO A PASSO</span>
+        <p><strong>1.</strong> Dê um nome e o preço de venda → <strong>2.</strong> Adicione os ingredientes e pese cada um → <strong>3.</strong> Salve como rascunho → <strong>4.</strong> Clique em <strong>Confirmar</strong> para ver o CMV oficial.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-alerta">
+        <span class="tutorial-label">FATOR DE CORREÇÃO</span>
+        <p>Carne na chapa perde ~15% → use <strong>1,15</strong>. Bacon perde gordura ~30% → <strong>1,30</strong>. Sem perda → <strong>1,00</strong>. É o que separa o custo "teórico" do <strong>custo real</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="lista-fichas" class="cards-grid">
+    <p class="empty" style="width:100%">Nenhuma ficha técnica criada</p>
+  </div>
+</section>
+
+<!-- ══════════════════════ MÓDULO 3 — RELATÓRIO ══════════════════════ -->
+<section id="tab-relatorio" class="tab-content">
+  <div class="section-header">
+    <h2>Relatório de CMV</h2>
+    <button class="btn-secondary" onclick="Relatorio.carregar()">↻ Atualizar</button>
+  </div>
+
+  <div class="tutorial-box" id="tutorial-relatorio">
+    <div class="tutorial-top">
+      <div class="tutorial-titulo"><span class="tutorial-icone">📊</span><strong>Como ler o CMV?</strong></div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-relatorio')">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-corpo collapsed">
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">A FÓRMULA</span>
+        <p>O CMV é o termômetro do seu cardápio: <strong>CMV% = (Custo Total ÷ Preço de Venda) × 100</strong>. Quanto menor, mais sobra para pagar contas e ter lucro.</p>
+      </div>
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">REFERÊNCIA ABRASEL</span>
+        <div class="tutorial-tabela-referencia">
+          <div class="ref-linha ref-baixo"><span class="ref-faixa">Abaixo de 25%</span><span class="ref-status">⚠ Verifique</span><span class="ref-desc">Pode indicar porção pequena ou ingrediente barato demais — risco de perder cliente.</span></div>
+          <div class="ref-linha ref-saudavel"><span class="ref-faixa">25% a 33%</span><span class="ref-status">✔ Ideal</span><span class="ref-desc">Faixa saudável para hamburgueria e pizzaria.</span></div>
+          <div class="ref-linha ref-alerta"><span class="ref-faixa">Acima de 35%</span><span class="ref-status">🚨 Alerta</span><span class="ref-desc">Desperdício, preço baixo ou compra cara. Aja rápido.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="relatorio-resumo" class="relatorio-resumo"></div>
+  <div id="relatorio-lista"></div>
+</section>
+
+<!-- ══════════════════════ MÓDULO 5 — COMPRAS ══════════════════════ -->
+<section id="tab-compras" class="tab-content">
+  <div class="section-header">
+    <h2>Compras — Onde brigar pelo preço</h2>
+    <button class="btn-secondary" onclick="Compras.carregar()">↻ Atualizar</button>
+  </div>
+
+  <div class="tutorial-box" id="tutorial-compras">
+    <div class="tutorial-top">
+      <div class="tutorial-titulo"><span class="tutorial-icone">🛒</span><strong>Como usar isto para negociar?</strong></div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-compras')">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-corpo collapsed">
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">O QUE É</span>
+        <p>Cada compra que você registra fica guardada com <strong>data, fornecedor e preço</strong>. Aqui o sistema compara tudo e mostra onde você está pagando mais caro.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-info">
+        <span class="tutorial-label">COMO NEGOCIAR</span>
+        <p>Leve o <strong>melhor preço já pago</strong> para a conversa com o fornecedor: "mês passado saiu por X". Dados na mão valem mais que opinião — é assim que se reduz o CMV sem perder qualidade.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-alerta">
+        <span class="tutorial-label">FIQUE DE OLHO</span>
+        <p>A <span style="color:var(--red)">🔺 seta vermelha</span> aparece quando a última compra ficou <strong>mais de 5% mais cara</strong> que a anterior. É o sinal de que vale ligar para o fornecedor.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="compras-resumo" class="relatorio-resumo"></div>
+  <div id="compras-lista"></div>
+</section>
+
+<!-- ══════════════════════ MÓDULO 4 — CUSTOS FIXOS ══════════════════════ -->
+<section id="tab-custos" class="tab-content">
+  <div class="section-header">
+    <h2>Custos Fixos Mensais</h2>
+    <div style="display:flex;gap:10px;align-items:center">
+      <select id="seletor-mes" class="seletor-mes" onchange="CustosFixos.selecionar(this.value)"></select>
+      <button class="btn-secondary" onclick="CustosFixos.abrirNovoMes()">+ Novo Mês</button>
+    </div>
+  </div>
+
+  <div class="tutorial-box" id="tutorial-custos">
+    <div class="tutorial-top">
+      <div class="tutorial-titulo"><span class="tutorial-icone">🏢</span><strong>Custos fixos e rateio — por que cada mês é diferente?</strong></div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-custos')">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-corpo collapsed">
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">O QUE SÃO</span>
+        <p>Gastos que existem <strong>todo mês independente das vendas</strong>: aluguel, salários, luz, gás. A conta de luz de janeiro é diferente da de julho — por isso cada mês tem seu próprio registro.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-info">
+        <span class="tutorial-label">RATEIO = CMV REAL</span>
+        <p>Informando quantos produtos você vende no mês, o sistema calcula o <strong>custo fixo por produto</strong>. Ative "Incluir Rateio" numa ficha para ver o custo verdadeiro do prato.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-alerta">
+        <span class="tutorial-label">EXEMPLO</span>
+        <p>R$ 15.000 de custos fixos ÷ 400 produtos vendidos = <strong>R$ 37,50 por produto</strong>. Esse valor precisa estar embutido no seu preço, senão o lucro é ilusão.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="custos-conteudo">
+    <div class="empty-card" id="custos-vazio">
+      <p>Nenhum mês cadastrado ainda.</p>
+      <button class="btn-primary" onclick="CustosFixos.abrirNovoMes()">+ Cadastrar primeiro mês</button>
+    </div>
+
+    <div id="custos-formulario" style="display:none">
+      <div class="custos-grid">
+        <div class="card custos-card">
+          <div class="custos-secao-titulo">🏠 Estrutura</div>
+          <div class="form-group">
+            <label class="campo-com-dica">Aluguel (R$/mês)<span class="dica-icone" data-dica="Aluguel do ponto + condomínio + IPTU. Se trabalha em casa, coloque 0.">?</span></label>
+            <input id="cf-aluguel" type="number" min="0" step="0.01" placeholder="Ex: 3500,00" />
+          </div>
+          <div class="form-group">
+            <label class="campo-com-dica">Energia Elétrica (R$/mês)<span class="dica-icone" data-dica="Use a conta real do mês. Cozinhas gastam de R$ 800 a R$ 2.000/mês.">?</span></label>
+            <input id="cf-energia" type="number" min="0" step="0.01" placeholder="Ex: 900,00" />
+          </div>
+          <div class="form-group">
+            <label class="campo-com-dica">Gás (R$/mês)<span class="dica-icone" data-dica="Some todos os botijões do mês. Um P45 custa ~R$ 200-280.">?</span></label>
+            <input id="cf-gas" type="number" min="0" step="0.01" placeholder="Ex: 450,00" />
+          </div>
+          <div class="form-group">
+            <label class="campo-com-dica">Água (R$/mês)<span class="dica-icone" data-dica="Conta de água do mês. Relevante por causa da higienização constante.">?</span></label>
+            <input id="cf-agua" type="number" min="0" step="0.01" placeholder="Ex: 180,00" />
+          </div>
+        </div>
+
+        <div class="card custos-card">
+          <div class="custos-secao-titulo">👥 Pessoas e Operação</div>
+          <div class="form-group">
+            <label class="campo-com-dica">Salários + Encargos (R$/mês)<span class="dica-icone" data-dica="IMPORTANTE: não use só o salário. Multiplique por 1,70 a 1,80 no CLT (13º, férias, INSS, FGTS). Salário R$ 2.000 ≈ R$ 3.400 de custo real.">?</span></label>
+            <input id="cf-salarios" type="number" min="0" step="0.01" placeholder="Ex: 8500,00" />
+            <small class="campo-hint">CLT: salário × 1,70 a 1,80 por funcionário</small>
+          </div>
+          <div class="form-group">
+            <label class="campo-com-dica">Internet + Telefone + Sistema (R$/mês)<span class="dica-icone" data-dica="Internet da loja + celular comercial + mensalidade de PDV/sistema de delivery.">?</span></label>
+            <input id="cf-internet" type="number" min="0" step="0.01" placeholder="Ex: 200,00" />
+          </div>
+          <div class="form-group">
+            <label class="campo-com-dica">Marketing + Taxas de App (R$/mês)<span class="dica-icone" data-dica="iFood/Rappi cobram 12% a 27% por pedido. R$ 10.000 no app a 18% = R$ 1.800/mês. Some também redes sociais e panfletos.">?</span></label>
+            <input id="cf-marketing" type="number" min="0" step="0.01" placeholder="Ex: 1200,00" />
+            <small class="campo-hint">Taxas iFood/Rappi + impulsionamentos</small>
+          </div>
+          <div class="form-group">
+            <label class="campo-com-dica">Manutenção (R$/mês)<span class="dica-icone" data-dica="Reserve 1-2% do valor dos equipamentos/mês. Chapa e fritadeira quebram na pior hora. Média: R$ 200-500/mês.">?</span></label>
+            <input id="cf-manutencao" type="number" min="0" step="0.01" placeholder="Ex: 300,00" />
+          </div>
+          <div class="form-group">
+            <label class="campo-com-dica">Outros (R$/mês)<span class="dica-icone" data-dica="Contador, alvarás, seguros, material de limpeza, uniformes, descartáveis gerais não alocados por produto.">?</span></label>
+            <input id="cf-outros" type="number" min="0" step="0.01" placeholder="Ex: 600,00" />
+          </div>
+        </div>
+
+        <div class="card custos-card custos-card-rateio">
+          <div class="custos-secao-titulo">📐 Rateio por Produto</div>
+          <div class="form-group">
+            <label class="campo-com-dica">Produtos Vendidos no Mês (unidades)<span class="dica-icone" data-dica="Some TODOS os itens vendidos no mês: hambúrgueres + pizzas + bebidas + porções. Use a média de meses normais.">?</span></label>
+            <input id="cf-vendas" type="number" min="0" step="1" placeholder="Ex: 400" />
+            <small class="campo-hint">Total de itens individuais vendidos no mês</small>
+          </div>
+          <div class="custo-rateio-resultado">
+            <div class="rateio-linha"><span>Total de Custos Fixos</span><strong id="rateio-total">R$ 0,00</strong></div>
+            <div class="rateio-linha rateio-destaque"><span>Custo Fixo por Produto</span><strong id="rateio-por-produto">R$ 0,00</strong></div>
+            <p class="rateio-explicacao" id="rateio-explicacao">Preencha os custos e o volume de vendas.</p>
+          </div>
+          <div class="custos-aviso">
+            <strong>Como usar:</strong> ative <em>"Incluir Rateio"</em> ao criar/editar uma Ficha Técnica para somar este valor ao CMV e ver o custo real do produto.
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn-danger" onclick="CustosFixos.excluirMes()">Excluir Mês</button>
+            <button class="btn-primary" onclick="CustosFixos.salvar()">Salvar Mês</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════ MODAL: COMPRA / PREÇO DE INGREDIENTE ══════════════════════ -->
+<div id="modal-compra" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-compra-titulo">Registrar Compra de Ingrediente</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-compra')">✕</button>
+    </div>
+    <form id="form-compra" onsubmit="Ingredientes.salvarCompra(event)">
+      <input type="hidden" id="compra-id" />
+      <div class="form-group">
+        <label class="campo-com-dica">Nome do Ingrediente *<span class="dica-icone" data-dica="Nome claro e consistente. Ex: 'Carne Moída 80/20', 'Queijo Mussarela'. Use sempre o mesmo nome para não duplicar.">?</span></label>
+        <input id="compra-nome" type="text" placeholder="Ex: Carne Moída 80/20" required />
+      </div>
+      <div class="form-group">
+        <label class="campo-com-dica">Fornecedor<span class="dica-icone" data-dica="Onde você comprou (ex: Atacadão, Distribuidora X). Guardar o fornecedor permite comparar preços depois e negociar melhor. Novos fornecedores são salvos automaticamente.">?</span></label>
+        <input id="compra-fornecedor" type="text" list="lista-fornecedores" placeholder="Ex: Atacadão" autocomplete="off" />
+        <datalist id="lista-fornecedores"></datalist>
+      </div>
+      <div class="form-group">
+        <label class="campo-com-dica">Como você comprou? *<span class="dica-icone" data-dica="A unidade da embalagem que você comprou. Comprou um pacote de 5kg? Escolha kg e digite 5. Comprou 1 litro de óleo? Escolha L e digite 1. O sistema converte sozinho para o custo por grama/ml/unidade.">?</span></label>
+        <select id="compra-unidade" required onchange="Ingredientes.atualizarPreviewCompra()">
+          <option value="kg">kg — quilograma</option>
+          <option value="g">g — grama</option>
+          <option value="L">L — litro</option>
+          <option value="ml">ml — mililitro</option>
+          <option value="un">un — unidade (peça)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="campo-com-dica">Quantidade Comprada *<span class="dica-icone" data-dica="Quanto veio na compra, na unidade escolhida acima. Ex: comprou 5 kg → digite 5. Comprou 10 pães → digite 10.">?</span></label>
+          <input id="compra-quantidade" type="number" step="0.001" min="0.001" placeholder="Ex: 5" required oninput="Ingredientes.atualizarPreviewCompra()" />
+        </div>
+        <div class="form-group">
+          <label class="campo-com-dica">Valor Total Pago (R$) *<span class="dica-icone" data-dica="O valor TOTAL que você pagou por essa quantidade, igual à nota fiscal. Não divida nada — o sistema calcula o custo por unidade.">?</span></label>
+          <input id="compra-valor" type="number" step="0.01" min="0.01" placeholder="Ex: 234.50" required oninput="Ingredientes.atualizarPreviewCompra()" />
+        </div>
+      </div>
+      <div class="custo-preview" id="compra-preview" style="display:none">
+        Custo calculado: <strong id="compra-preview-valor">—</strong>
+        <span class="custo-preview-alerta" id="compra-preview-alerta" style="display:none"></span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-compra')">Cancelar</button>
+        <button type="submit" class="btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: EDITAR INGREDIENTE ══════════════════════ -->
+<div id="modal-editar-ing" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Editar Ingrediente</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-editar-ing')">✕</button>
+    </div>
+    <form id="form-editar-ing" onsubmit="Ingredientes.salvarEdicao(event)">
+      <input type="hidden" id="editar-ing-id" />
+      <div class="form-group">
+        <label>Nome do Ingrediente *</label>
+        <input id="editar-ing-nome" type="text" required />
+      </div>
+      <div class="form-group">
+        <label class="campo-com-dica">Unidade de Medida na Receita<span class="dica-icone" data-dica="Como você vai pesar esse item ao montar o produto. Massa → g, líquidos → ml, peças → un. Mudar isso pode afetar fichas existentes.">?</span></label>
+        <select id="editar-ing-unidade">
+          <option value="g">g — grama (massa)</option>
+          <option value="ml">ml — mililitro (volume)</option>
+          <option value="un">un — unidade (peça)</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-editar-ing')">Cancelar</button>
+        <button type="submit" class="btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: FICHA TÉCNICA ══════════════════════ -->
+<div id="modal-ficha" class="modal hidden">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3 id="modal-ficha-titulo">Nova Ficha Técnica</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-ficha')">✕</button>
+    </div>
+    <form id="form-ficha" onsubmit="Fichas.salvar(event)">
+      <input type="hidden" id="ficha-id" />
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Nome do Produto *</label>
+          <input id="ficha-nome" type="text" placeholder="Ex: X-Bacon Duplo" required />
+        </div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <select id="ficha-tipo">
+            <option value="hamburguer">🍔 Hamburguer</option>
+            <option value="pizza">🍕 Pizza</option>
+            <option value="bebida">🥤 Bebida</option>
+            <option value="porcao">🍟 Porção</option>
+            <option value="outro">🍽 Outro</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="campo-com-dica">Preço de Venda (R$) *<span class="dica-icone" data-dica="Preço que o cliente paga. Use o do seu cardápio. Pode simular outros valores para achar o preço ideal.">?</span></label>
+          <input id="ficha-preco" type="number" step="0.01" min="0.01" required placeholder="Ex: 35.00" />
+        </div>
+        <div class="form-group">
+          <label class="campo-com-dica">Custo da Embalagem (R$)<span class="dica-icone" data-dica="Some caixa + sacola + guardanapo + palito do pedido. No delivery isso pesa muito. Ex: caixa 0,60 + sacola 0,30 + guardanapo 0,05 = R$ 0,95.">?</span></label>
+          <input id="ficha-embalagem" type="number" step="0.01" min="0" value="0" placeholder="Ex: 1.50" />
+          <small class="campo-hint">Caixa + sacola + descartáveis do pedido</small>
+        </div>
+      </div>
+
+      <label class="toggle-label">
+        <input type="checkbox" id="ficha-rateio" />
+        <span>Incluir Rateio de Custos Fixos no CMV</span>
+        <span class="dica-icone" data-dica="Soma a parcela de custos fixos (aluguel, salários, etc.) do mês mais recente. Mostra o CMV REAL — maior, porém verdadeiro.">?</span>
+      </label>
+
+      <div class="ingredientes-secao">
+        <div class="ingredientes-header">
+          <div>
+            <h4>Ingredientes da Porção</h4>
+            <small style="color:var(--text-muted);font-size:0.75rem">Pese cada item ao montar o produto uma vez e anote aqui</small>
+          </div>
+          <button type="button" class="btn-add" onclick="Fichas.adicionarLinha()">+ Adicionar</button>
+        </div>
+        <div class="fator-explicacao">
+          <strong>Fator de Correção:</strong> perda no preparo. Carne na chapa ≈ 1,15 · Bacon ≈ 1,30 · Vegetais ≈ 1,05 · Sem perda = 1,00.
+        </div>
+        <div id="ingredientes-lista-ficha">
+          <div class="ingrediente-vazio">Nenhum ingrediente — clique em "+ Adicionar"</div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-ficha')">Cancelar</button>
+        <button type="submit" class="btn-primary">Salvar Rascunho</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: LISTA PADRÃO ══════════════════════ -->
+<div id="modal-padrao" class="modal hidden">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3>📋 Lista Padrão — Hamburgueria e Pizzaria</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-padrao')">✕</button>
+    </div>
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border);background:rgba(245,166,35,0.05)">
+      <p style="font-size:0.83rem;color:var(--text-muted);line-height:1.6">
+        Marque os ingredientes que você usa. Eles entram <strong>como lembrete, sem preço</strong> — depois é só clicar em <strong>"Registrar Preço"</strong> e informar sua compra real. Itens já cadastrados ficam desativados.
+      </p>
+    </div>
+    <div id="padrao-lista" style="padding:12px 20px;max-height:58vh;overflow-y:auto"></div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <span id="padrao-contagem" style="font-size:0.83rem;color:var(--text-muted)">Nenhum selecionado</span>
+      <div style="display:flex;gap:10px">
+        <button class="btn-secondary" onclick="UI.fecharModal('modal-padrao')">Cancelar</button>
+        <button class="btn-primary" onclick="IngPadrao.importar()">Importar Selecionados</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: NOVO MÊS ══════════════════════ -->
+<div id="modal-mes" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Novo Mês de Custos</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-mes')">✕</button>
+    </div>
+    <form id="form-mes" onsubmit="CustosFixos.criarMes(event)">
+      <div class="form-group">
+        <label class="campo-com-dica">Mês de Referência *<span class="dica-icone" data-dica="O mês a que esses custos se referem. Cada mês tem suas próprias contas (a luz de janeiro difere da de julho).">?</span></label>
+        <input id="mes-competencia" type="month" required />
+      </div>
+      <div class="form-group">
+        <label class="toggle-label" style="text-transform:none">
+          <input type="checkbox" id="mes-copiar" />
+          <span>Copiar valores do mês mais recente (se houver)</span>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-mes')">Cancelar</button>
+        <button type="submit" class="btn-primary">Criar Mês</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: DETALHE CMV ══════════════════════ -->
+<div id="modal-cmv" class="modal hidden">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3 id="modal-cmv-titulo">Detalhamento CMV</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-cmv')">✕</button>
+    </div>
+    <div id="modal-cmv-conteudo"></div>
+  </div>
+</div>
+
+<div id="tooltip" class="tooltip-flutuante hidden"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

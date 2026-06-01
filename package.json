@@ -1,0 +1,17 @@
+{
+  "name": "cmv-studio",
+  "version": "1.0.0",
+  "description": "Sistema de Cálculo de CMV para Hamburgueria e Pizzaria",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18.x"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "uuid": "^9.0.0"
+  }
+}
