@@ -790,6 +790,251 @@ const Compras = {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// MÓDULO 6 — ESTOQUE
+// ═══════════════════════════════════════════════════════════════
+const ROTULOS_UN = { kg:'kg — quilograma', g:'g — grama', L:'L — litro', ml:'ml — mililitro', un:'un — unidade' };
+function opcoesUnidade(base, selecionada) {
+  const lista = UNIDADES_POR_BASE[base] || [base];
+  const sel = selecionada || lista[0];
+  return lista.map(u => `<option value="${u}" ${u===sel?'selected':''}>${ROTULOS_UN[u]||u}</option>`).join('');
+}
+function fmtQtd(valor, unidade) {
+  const n = Number(valor);
+  const txt = n.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+  return `${txt} ${unidade}`;
+}
+
+let _estoqueItens = [];
+
+const Estoque = {
+  async carregar() {
+    const data = await API.get('/estoque');
+    _estoqueItens = data.itens;
+
+    document.getElementById('estoque-resumo').innerHTML = `
+      <div class="resumo-card"><div class="valor">${Fmt.moeda(data.valor_total_estoque)}</div><div class="label">Valor Parado em Estoque</div></div>
+      <div class="resumo-card"><div class="valor">${data.total_itens}</div><div class="label">Itens Cadastrados</div></div>
+      <div class="resumo-card"><div class="valor" style="color:${(data.itens_abaixo_minimo+data.itens_zerados)?'var(--red)':'var(--green)'}">${data.itens_abaixo_minimo + data.itens_zerados}</div><div class="label">Precisa Comprar</div></div>`;
+
+    // Lista de compras
+    const bloco = document.getElementById('estoque-compras-bloco');
+    if (data.lista_compras.length) {
+      bloco.style.display = 'block';
+      document.getElementById('lista-compras-contagem').textContent = `(${data.lista_compras.length})`;
+      document.getElementById('lista-compras-itens').innerHTML = data.lista_compras.map(i => {
+        const tag = i.situacao === 'zerado'
+          ? '<span class="badge-estoque zerado">Sem estoque</span>'
+          : '<span class="badge-estoque baixo">Abaixo do mínimo</span>';
+        const restante = i.minimo_base > 0
+          ? `tem ${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}, mínimo ${fmtQtd(i.minimo_exibicao, i.unidade_exibicao)}`
+          : `tem ${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}`;
+        return `<div class="lista-compras-item">
+          <div><strong>${i.nome}</strong> ${tag}</div>
+          <div style="color:var(--text-muted);font-size:0.8rem">${restante}</div>
+          <button class="btn-confirm" onclick="Estoque.abrirMovimento('${i.id}','entrada')">Registrar Entrada</button>
+        </div>`;
+      }).join('');
+    } else {
+      bloco.style.display = 'none';
+    }
+
+    // Tabela completa
+    const tbody = document.getElementById('lista-estoque');
+    if (!_estoqueItens.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Nenhum ingrediente cadastrado. Cadastre na aba Ingredientes.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = _estoqueItens.map(i => {
+      const badge = { ok:'<span class="badge-estoque ok">Em estoque</span>', baixo:'<span class="badge-estoque baixo">Baixo</span>', zerado:'<span class="badge-estoque zerado">Zerado</span>' }[i.situacao];
+      const minimo = i.minimo_base > 0 ? fmtQtd(i.minimo_exibicao, i.unidade_exibicao) : '<span style="color:var(--text-muted)">—</span>';
+      return `<tr>
+        <td><strong>${i.nome}</strong></td>
+        <td style="text-align:right"><strong>${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</strong></td>
+        <td style="text-align:right;color:var(--text-muted)">${minimo}</td>
+        <td style="text-align:right">${i.tem_preco ? Fmt.moeda(i.valor_estoque) : '<span class="badge-sem-preco">sem preço</span>'}</td>
+        <td style="text-align:center">${badge}</td>
+        <td><div class="acoes-cell">
+          <button class="btn-confirm" onclick="Estoque.abrirMovimento('${i.id}','entrada')" title="Registrar entrada">＋</button>
+          <button class="btn-danger" onclick="Estoque.abrirMovimento('${i.id}','saida')" title="Dar baixa">－</button>
+          <button class="btn-edit" onclick="Estoque.abrirMovimento('${i.id}','ajuste')">Ajustar</button>
+          <button class="btn-edit" onclick="Estoque.abrirMinimo('${i.id}')">Mínimo</button>
+        </div></td>
+      </tr>`;
+    }).join('');
+  },
+
+  abrirMovimento(id, tipo = 'entrada') {
+    const i = _estoqueItens.find(x => x.id === id);
+    if (!i) return;
+    document.getElementById('form-estoque').reset();
+    document.getElementById('estoque-ing-id').value = i.id;
+    document.getElementById('estoque-tipo').value = tipo;
+    document.getElementById('estoque-unidade').innerHTML = opcoesUnidade(i.unidade_base);
+    document.getElementById('modal-estoque-titulo').textContent = `Movimentar — ${i.nome}`;
+    document.getElementById('estoque-modal-info').innerHTML =
+      `Estoque atual: <strong>${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</strong>`;
+    Estoque.atualizarRotuloTipo();
+    UI.abrirModal('modal-estoque');
+  },
+
+  atualizarRotuloTipo() {
+    const tipo = document.getElementById('estoque-tipo').value;
+    const lbl = document.getElementById('estoque-qtd-label');
+    const txt = { entrada: 'Quantidade que entrou *', saida: 'Quantidade que saiu *', ajuste: 'Quantidade real contada *' }[tipo];
+    lbl.childNodes[0].nodeValue = txt;
+  },
+
+  async salvarMovimento(e) {
+    e.preventDefault();
+    const body = {
+      ingrediente_id: document.getElementById('estoque-ing-id').value,
+      tipo: document.getElementById('estoque-tipo').value,
+      quantidade: parseFloat(document.getElementById('estoque-quantidade').value),
+      unidade: document.getElementById('estoque-unidade').value,
+      motivo: document.getElementById('estoque-motivo').value,
+    };
+    try {
+      const res = await API.post('/estoque/movimento', body);
+      UI.fecharModal('modal-estoque');
+      await Estoque.carregar();
+      UI.toast(res.mensagem);
+    } catch (err) { UI.toast(err.erro || 'Erro ao movimentar estoque.', 'erro'); }
+  },
+
+  abrirMinimo(id) {
+    const i = _estoqueItens.find(x => x.id === id);
+    if (!i) return;
+    document.getElementById('form-minimo').reset();
+    document.getElementById('minimo-ing-id').value = i.id;
+    document.getElementById('minimo-unidade').innerHTML = opcoesUnidade(i.unidade_base, i.unidade_exibicao);
+    document.getElementById('minimo-quantidade').value = i.minimo_base > 0 ? i.minimo_exibicao : '';
+    document.getElementById('modal-minimo-titulo').textContent = `Estoque Mínimo — ${i.nome}`;
+    UI.abrirModal('modal-minimo');
+  },
+
+  async salvarMinimo(e) {
+    e.preventDefault();
+    const id = document.getElementById('minimo-ing-id').value;
+    const body = {
+      minimo: parseFloat(document.getElementById('minimo-quantidade').value),
+      unidade: document.getElementById('minimo-unidade').value,
+    };
+    try {
+      await API.put('/estoque/' + id + '/minimo', body);
+      UI.fecharModal('modal-minimo');
+      await Estoque.carregar();
+      UI.toast('Estoque mínimo atualizado.');
+    } catch (err) { UI.toast(err.erro || 'Erro ao salvar mínimo.', 'erro'); }
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO 7 — CAIXA DIÁRIO
+// ═══════════════════════════════════════════════════════════════
+let _caixaCategorias = null;
+let _caixaMesAtivo = null;
+
+const Caixa = {
+  async carregar(mes) {
+    if (!_caixaCategorias) {
+      try { _caixaCategorias = await API.get('/caixa/categorias'); } catch { _caixaCategorias = { entrada: [], saida: [] }; }
+    }
+    const data = await API.get('/caixa' + (mes ? '?mes=' + mes : ''));
+    _caixaMesAtivo = data.competencia;
+
+    // Seletor de meses (inclui o mês atual mesmo sem lançamentos)
+    const sel = document.getElementById('caixa-seletor-mes');
+    const meses = [...new Set([data.competencia, ...data.meses_disponiveis])];
+    sel.innerHTML = meses.map(m => `<option value="${m}">${Fmt.competencia(m)}</option>`).join('');
+    sel.value = data.competencia;
+
+    const r = data.resumo;
+    const corRes = r.resultado > 0 ? 'var(--green)' : (r.resultado < 0 ? 'var(--red)' : 'var(--text-muted)');
+    document.getElementById('caixa-resumo').innerHTML = `
+      <div class="resumo-card"><div class="valor" style="color:var(--green)">${Fmt.moeda(r.total_entradas)}</div><div class="label">Entradas no Mês</div></div>
+      <div class="resumo-card"><div class="valor" style="color:var(--red)">${Fmt.moeda(r.total_saidas)}</div><div class="label">Saídas no Mês</div></div>
+      <div class="resumo-card"><div class="valor" style="color:${corRes}">${Fmt.moeda(r.resultado)}</div><div class="label">Resultado do Mês</div></div>
+      <div class="resumo-card"><div class="valor" style="font-size:1rem">🟢 ${r.dias_lucro} &nbsp; 🔴 ${r.dias_prejuizo}</div><div class="label">Dias Lucro / Prejuízo</div></div>`;
+
+    const cont = document.getElementById('caixa-dias');
+    if (!data.dias.length) {
+      cont.innerHTML = '<p class="empty">Nenhum lançamento neste mês. Clique em "+ Lançamento" para começar.</p>';
+      return;
+    }
+    cont.innerHTML = data.dias.map(d => Caixa.cardDia(d)).join('');
+  },
+
+  cardDia(d) {
+    const lucro = d.resultado >= 0;
+    const lancs = d.lancamentos.map(l => `
+      <div class="caixa-lanc ${l.tipo}">
+        <span class="caixa-lanc-cat">${l.tipo === 'entrada' ? '⬆' : '⬇'} ${l.categoria}${l.descricao ? ' · <em>'+l.descricao+'</em>' : ''}</span>
+        <span class="caixa-lanc-valor ${l.tipo}">${l.tipo === 'entrada' ? '+' : '−'} ${Fmt.moeda(l.valor)}</span>
+        <button class="btn-remover" title="Excluir" onclick="Caixa.excluir('${l.id}')">✕</button>
+      </div>`).join('');
+    return `<div class="caixa-dia ${lucro ? 'lucro' : 'prejuizo'}">
+      <div class="caixa-dia-header">
+        <div class="caixa-dia-data">${Fmt.data(d.data)}</div>
+        <div class="caixa-dia-totais">
+          <span class="t-entrada">+ ${Fmt.moeda(d.entradas)}</span>
+          <span class="t-saida">− ${Fmt.moeda(d.saidas)}</span>
+          <span class="t-resultado ${lucro ? 'lucro' : 'prejuizo'}">${lucro ? 'Lucro' : 'Prejuízo'}: ${Fmt.moeda(d.resultado)}</span>
+        </div>
+      </div>
+      <div class="caixa-dia-lancs">${lancs}</div>
+    </div>`;
+  },
+
+  selecionarMes(mes) { Caixa.carregar(mes); },
+
+  abrirLancamento() {
+    document.getElementById('form-caixa').reset();
+    document.querySelector('input[name="caixa-tipo"][value="entrada"]').checked = true;
+    // data padrão = hoje (ou primeiro dia do mês ativo, se for outro mês)
+    const hoje = new Date();
+    const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+    const inp = document.getElementById('caixa-data');
+    inp.value = (_caixaMesAtivo && hojeStr.startsWith(_caixaMesAtivo)) ? hojeStr : `${_caixaMesAtivo}-01`;
+    Caixa.trocarTipo();
+    UI.abrirModal('modal-caixa');
+  },
+
+  trocarTipo() {
+    const tipo = document.querySelector('input[name="caixa-tipo"]:checked').value;
+    const cats = (_caixaCategorias && _caixaCategorias[tipo]) || [];
+    document.getElementById('caixa-categoria').innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    document.getElementById('modal-caixa').querySelector('.modal-box').className =
+      'modal-box caixa-tema-' + tipo;
+  },
+
+  async salvarLancamento(e) {
+    e.preventDefault();
+    const body = {
+      data: document.getElementById('caixa-data').value,
+      tipo: document.querySelector('input[name="caixa-tipo"]:checked').value,
+      categoria: document.getElementById('caixa-categoria').value,
+      descricao: document.getElementById('caixa-descricao').value,
+      valor: parseFloat(document.getElementById('caixa-valor').value),
+    };
+    try {
+      await API.post('/caixa', body);
+      UI.fecharModal('modal-caixa');
+      await Caixa.carregar(body.data.slice(0, 7));
+      UI.toast('Lançamento registrado.');
+    } catch (err) { UI.toast(err.erro || 'Erro ao salvar lançamento.', 'erro'); }
+  },
+
+  async excluir(id) {
+    if (!confirm('Excluir este lançamento?')) return;
+    try {
+      await API.delete('/caixa/' + id);
+      await Caixa.carregar(_caixaMesAtivo);
+      UI.toast('Lançamento excluído.', 'aviso');
+    } catch (err) { UI.toast(err.erro || 'Erro ao excluir.', 'erro'); }
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
 // NAVEGAÇÃO + INIT
 // ═══════════════════════════════════════════════════════════════
 document.querySelectorAll('.tab').forEach(btn => {
@@ -803,6 +1048,8 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (target === 'fichas') Fichas.carregar();
     if (target === 'custos') CustosFixos.carregar();
     if (target === 'compras') Compras.carregar();
+    if (target === 'estoque') Estoque.carregar();
+    if (target === 'caixa') Caixa.carregar();
   });
 });
 document.querySelectorAll('.modal').forEach(m => {

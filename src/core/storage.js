@@ -19,14 +19,20 @@ const INGREDIENTES_FILE  = path.join(DATA_DIR, 'ingredientes.json');
 const FICHAS_FILE        = path.join(DATA_DIR, 'fichas.json');
 const CUSTOS_FILE        = path.join(DATA_DIR, 'custos_fixos.json');
 const FORNECEDORES_FILE  = path.join(DATA_DIR, 'fornecedores.json');
+const MOVIMENTOS_FILE    = path.join(DATA_DIR, 'movimentos_estoque.json');
+const CAIXA_FILE         = path.join(DATA_DIR, 'caixa.json');
 
 // No Vercel, copia os arquivos iniciais para /tmp se ainda não existirem
 if (IS_VERCEL) {
   const SEED_DIR = path.join(__dirname, '..', '..', 'data');
-  ['ingredientes.json','fichas.json','custos_fixos.json','fornecedores.json'].forEach(f => {
+  const PADROES = {
+    'custos_fixos.json': '{"meses":[]}',
+    'caixa.json': '{"lancamentos":[]}',
+  };
+  ['ingredientes.json','fichas.json','custos_fixos.json','fornecedores.json','movimentos_estoque.json','caixa.json'].forEach(f => {
     const dest = path.join(DATA_DIR, f);
     if (!fs.existsSync(dest)) {
-      try { fs.copyFileSync(path.join(SEED_DIR, f), dest); } catch { fs.writeFileSync(dest, f === 'custos_fixos.json' ? '{"meses":[]}' : '[]'); }
+      try { fs.copyFileSync(path.join(SEED_DIR, f), dest); } catch { fs.writeFileSync(dest, PADROES[f] || '[]'); }
     }
   });
 }
@@ -154,12 +160,61 @@ function registrarFornecedor(nome) {
   return listarFornecedores();
 }
 
+// ─── Movimentações de Estoque (histórico de entradas/saídas/ajustes) ──────────
+
+function listarMovimentos() {
+  return lerJSON(MOVIMENTOS_FILE, []);
+}
+
+function listarMovimentosPorIngrediente(ingrediente_id) {
+  return listarMovimentos()
+    .filter(m => m.ingrediente_id === ingrediente_id)
+    .sort((a, b) => new Date(b.data) - new Date(a.data));
+}
+
+function salvarMovimento(mov) {
+  const lista = listarMovimentos();
+  lista.push(mov);
+  salvarJSON(MOVIMENTOS_FILE, lista);
+}
+
+// ─── Caixa Diário (entradas e saídas por dia) ─────────────────────────────────
+// Estrutura: { lancamentos: [ { id, data:"2026-06-01", tipo, categoria, descricao, valor } ] }
+
+function listarLancamentos() {
+  const dados = lerJSON(CAIXA_FILE, { lancamentos: [] });
+  return Array.isArray(dados.lancamentos) ? dados.lancamentos : [];
+}
+
+function buscarLancamentoPorId(id) {
+  return listarLancamentos().find(l => l.id === id) || null;
+}
+
+function salvarLancamento(lanc) {
+  const lista = listarLancamentos();
+  const idx = lista.findIndex(l => l.id === lanc.id);
+  if (idx >= 0) lista[idx] = lanc;
+  else lista.push(lanc);
+  salvarJSON(CAIXA_FILE, { lancamentos: lista });
+}
+
+function deletarLancamento(id) {
+  salvarJSON(CAIXA_FILE, { lancamentos: listarLancamentos().filter(l => l.id !== id) });
+}
+
 module.exports = {
   listarIngredientes,
   buscarIngredientePorId,
   buscarIngredientePorNome,
   salvarIngrediente,
   deletarIngrediente,
+  listarMovimentos,
+  listarMovimentosPorIngrediente,
+  salvarMovimento,
+  listarLancamentos,
+  buscarLancamentoPorId,
+  salvarLancamento,
+  deletarLancamento,
   listarFichas,
   buscarFichaPorId,
   salvarFicha,

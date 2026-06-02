@@ -21,9 +21,11 @@
 
 <nav class="tabs">
   <button class="tab active" data-tab="ingredientes">Ingredientes</button>
+  <button class="tab" data-tab="estoque">Estoque</button>
   <button class="tab" data-tab="fichas">Fichas Técnicas</button>
   <button class="tab" data-tab="relatorio">Relatório CMV</button>
   <button class="tab" data-tab="compras">Compras</button>
+  <button class="tab" data-tab="caixa">Caixa Diário</button>
   <button class="tab" data-tab="custos">Custos Fixos</button>
 </nav>
 
@@ -70,6 +72,62 @@
       </thead>
       <tbody id="lista-ingredientes">
         <tr><td colspan="4" class="empty">Carregando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════ MÓDULO 6 — ESTOQUE ══════════════════════ -->
+<section id="tab-estoque" class="tab-content">
+  <div class="section-header">
+    <h2>Controle de Estoque</h2>
+    <button class="btn-secondary" onclick="Estoque.carregar()">↻ Atualizar</button>
+  </div>
+
+  <div class="tutorial-box" id="tutorial-estoque">
+    <div class="tutorial-top">
+      <div class="tutorial-titulo"><span class="tutorial-icone">📦</span><strong>Como funciona o controle de estoque?</strong></div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-estoque')">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-corpo collapsed">
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">O QUE É</span>
+        <p>Mostra <strong>quanto você tem de cada item</strong>, o <strong>dinheiro parado</strong> em estoque e <strong>o que precisa comprar</strong>. Toda compra registrada na aba Ingredientes já entra aqui automaticamente.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-info">
+        <span class="tutorial-label">ENTRADA, BAIXA E AJUSTE</span>
+        <p><strong>Entrada:</strong> chegou mercadoria. <strong>Baixa:</strong> perda, quebra ou uso. <strong>Ajuste:</strong> você contou a prateleira e informa o valor real — o sistema corrige sozinho.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-alerta">
+        <span class="tutorial-label">ESTOQUE MÍNIMO</span>
+        <p>Defina o mínimo de cada item (ponto de reposição). Quando o estoque chegar nesse nível, ele aparece na <strong>Lista de Compras</strong> — assim você nunca fica na mão no meio do movimento.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="estoque-resumo" class="relatorio-resumo"></div>
+
+  <div id="estoque-compras-bloco" style="display:none">
+    <div class="lista-compras-box">
+      <div class="lista-compras-titulo">🛒 Precisa Comprar <span id="lista-compras-contagem"></span></div>
+      <div id="lista-compras-itens"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <table>
+      <thead>
+        <tr>
+          <th>Ingrediente</th>
+          <th style="text-align:right">Em Estoque</th>
+          <th style="text-align:right">Mínimo</th>
+          <th style="text-align:right">Valor Parado</th>
+          <th style="text-align:center">Situação</th>
+          <th style="text-align:right">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="lista-estoque">
+        <tr><td colspan="6" class="empty">Carregando…</td></tr>
       </tbody>
     </table>
   </div>
@@ -170,6 +228,41 @@
 
   <div id="compras-resumo" class="relatorio-resumo"></div>
   <div id="compras-lista"></div>
+</section>
+
+<!-- ══════════════════════ MÓDULO 7 — CAIXA DIÁRIO ══════════════════════ -->
+<section id="tab-caixa" class="tab-content">
+  <div class="section-header">
+    <h2>Caixa Diário</h2>
+    <div style="display:flex;gap:10px;align-items:center">
+      <select id="caixa-seletor-mes" class="seletor-mes" onchange="Caixa.selecionarMes(this.value)"></select>
+      <button class="btn-primary" onclick="Caixa.abrirLancamento()">+ Lançamento</button>
+    </div>
+  </div>
+
+  <div class="tutorial-box" id="tutorial-caixa">
+    <div class="tutorial-top">
+      <div class="tutorial-titulo"><span class="tutorial-icone">💰</span><strong>Como usar o caixa diário?</strong></div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-caixa')">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-corpo collapsed">
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">O QUE É</span>
+        <p>Um diário simples de <strong>quanto entrou e quanto saiu de dinheiro a cada dia</strong>. No fim do dia você vê se foi um dia de <strong>lucro</strong> ou de <strong>prejuízo</strong>.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-info">
+        <span class="tutorial-label">COMO LANÇAR</span>
+        <p><strong>Entradas:</strong> vendas do balcão, delivery/app. <strong>Saídas:</strong> compra de insumos, salários, contas, retiradas. Lance no fim do expediente — leva 1 minuto.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-alerta">
+        <span class="tutorial-label">POR QUE IMPORTA</span>
+        <p>O CMV mostra a saúde de cada produto; o caixa mostra a saúde do <strong>dia a dia</strong>. Vários dias de prejuízo seguidos são um alerta para agir antes que o mês feche no vermelho.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="caixa-resumo" class="relatorio-resumo"></div>
+  <div id="caixa-dias"></div>
 </section>
 
 <!-- ══════════════════════ MÓDULO 4 — CUSTOS FIXOS ══════════════════════ -->
@@ -485,6 +578,118 @@
       <button class="modal-close" onclick="UI.fecharModal('modal-cmv')">✕</button>
     </div>
     <div id="modal-cmv-conteudo"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: MOVIMENTO DE ESTOQUE ══════════════════════ -->
+<div id="modal-estoque" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-estoque-titulo">Movimentar Estoque</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-estoque')">✕</button>
+    </div>
+    <form id="form-estoque" onsubmit="Estoque.salvarMovimento(event)">
+      <input type="hidden" id="estoque-ing-id" />
+      <div class="estoque-modal-info" id="estoque-modal-info"></div>
+      <div class="form-group">
+        <label class="campo-com-dica">Tipo de Movimento *<span class="dica-icone" data-dica="Entrada = chegou mercadoria. Baixa = saiu por perda, quebra ou consumo. Ajuste = você contou a prateleira e vai informar a quantidade real que existe agora.">?</span></label>
+        <select id="estoque-tipo" onchange="Estoque.atualizarRotuloTipo()">
+          <option value="entrada">➕ Entrada (chegou mercadoria)</option>
+          <option value="saida">➖ Baixa (perda / quebra / consumo)</option>
+          <option value="ajuste">🔄 Ajuste de inventário (contei a prateleira)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label class="campo-com-dica" id="estoque-qtd-label">Quantidade *<span class="dica-icone" data-dica="No ajuste, informe QUANTO existe de verdade agora (o sistema corrige a diferença). Na entrada/baixa, informe quanto entrou ou saiu.">?</span></label>
+          <input id="estoque-quantidade" type="number" step="0.001" min="0" placeholder="Ex: 5" required />
+        </div>
+        <div class="form-group">
+          <label>Unidade</label>
+          <select id="estoque-unidade"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Motivo / Observação</label>
+        <input id="estoque-motivo" type="text" placeholder="Ex: quebra, vencido, contagem do dia 01" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-estoque')">Cancelar</button>
+        <button type="submit" class="btn-primary">Registrar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: ESTOQUE MÍNIMO ══════════════════════ -->
+<div id="modal-minimo" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-minimo-titulo">Definir Estoque Mínimo</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-minimo')">✕</button>
+    </div>
+    <form id="form-minimo" onsubmit="Estoque.salvarMinimo(event)">
+      <input type="hidden" id="minimo-ing-id" />
+      <div class="estoque-modal-info">Quando o estoque chegar nesse valor, o item entra na <strong>Lista de Compras</strong>. Deixe 0 para não monitorar.</div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Estoque Mínimo *</label>
+          <input id="minimo-quantidade" type="number" step="0.001" min="0" placeholder="Ex: 2" required />
+        </div>
+        <div class="form-group">
+          <label>Unidade</label>
+          <select id="minimo-unidade"></select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-minimo')">Cancelar</button>
+        <button type="submit" class="btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: LANÇAMENTO DE CAIXA ══════════════════════ -->
+<div id="modal-caixa" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Novo Lançamento</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-caixa')">✕</button>
+    </div>
+    <form id="form-caixa" onsubmit="Caixa.salvarLancamento(event)">
+      <div class="caixa-tipo-toggle">
+        <label class="caixa-tipo-opt entrada">
+          <input type="radio" name="caixa-tipo" value="entrada" checked onchange="Caixa.trocarTipo()" />
+          <span>⬆ Entrou dinheiro</span>
+        </label>
+        <label class="caixa-tipo-opt saida">
+          <input type="radio" name="caixa-tipo" value="saida" onchange="Caixa.trocarTipo()" />
+          <span>⬇ Saiu dinheiro</span>
+        </label>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Data *</label>
+          <input id="caixa-data" type="date" required />
+        </div>
+        <div class="form-group">
+          <label>Categoria</label>
+          <select id="caixa-categoria"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="campo-com-dica">Valor (R$) *<span class="dica-icone" data-dica="Quanto entrou ou saiu nesse lançamento. Você pode somar o dia inteiro num lançamento só (ex: total de vendas do dia) ou lançar item a item.">?</span></label>
+        <input id="caixa-valor" type="number" step="0.01" min="0.01" placeholder="Ex: 1850.00" required />
+      </div>
+      <div class="form-group">
+        <label>Descrição</label>
+        <input id="caixa-descricao" type="text" placeholder="Ex: vendas do balcão, pagamento fornecedor" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-caixa')">Cancelar</button>
+        <button type="submit" class="btn-primary">Salvar Lançamento</button>
+      </div>
+    </form>
   </div>
 </div>
 

@@ -6,6 +6,8 @@ const router = express.Router();
 const storage = require('../core/storage');
 const cmvCore = require('../core/cmv');
 const units = require('../core/units');
+const estoqueCore = require('../core/estoque');
+const caixaCore = require('../core/caixa');
 
 // ═══════════════════════════════════════════════════════════════
 // MÓDULO 1 — INGREDIENTES
@@ -100,10 +102,25 @@ router.post('/ingredientes', (req, res) => {
 
   const fichas_atualizadas = precoAlterado ? cmvCore.propagarPreco(ingrediente.id) : [];
 
+  // Entrada automática no estoque (toda compra que chega aumenta o estoque).
+  // Pode ser desativada enviando lancar_estoque: false (ex.: só corrigir preço).
+  let entrada_estoque = null;
+  if (req.body.lancar_estoque !== false) {
+    const r = estoqueCore.aplicarMovimento({
+      ingrediente_id: ingrediente.id,
+      tipo: 'entrada',
+      quantidade: qtd,
+      unidade: unidade_compra,
+      motivo: fornecedorLimpo ? `Compra — ${fornecedorLimpo}` : 'Compra registrada',
+    });
+    if (!r.erro) { entrada_estoque = r.movimento; ingrediente = r.ingrediente; }
+  }
+
   res.json({
     ingrediente,
     precoAlterado,
     fichas_atualizadas,
+    entrada_estoque,
     mensagem: existente
       ? (precoAlterado
           ? `Preço atualizado. ${fichas_atualizadas.length ? 'CMVs recalculados: ' + fichas_atualizadas.join(', ') : ''}`
@@ -362,6 +379,99 @@ router.get('/compras/analise', (req, res) => {
 
   const alertas = analise.filter(a => a.alerta).length;
   res.json({ analise, total_itens: analise.length, alertas });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO 6 — CONTROLE DE ESTOQUE
+// ═══════════════════════════════════════════════════════════════
+
+// Panorama geral: itens, valor total parado e lista de compras
+router.get('/estoque', (req, res) => {
+  res.json(estoqueCore.panorama());
+});
+
+// Histórico de movimentações (todas ou de um ingrediente)
+router.get('/estoque/movimentos', (req, res) => {
+  const { ingrediente_id } = req.query;
+  const movs = ingrediente_id
+    ? storage.listarMovimentosPorIngrediente(ingrediente_id)
+    : storage.listarMovimentos().sort((a, b) => new Date(b.data) - new Date(a.data));
+  res.json(movs);
+});
+
+// Registra um movimento (entrada / saida / ajuste)
+router.post('/estoque/movimento', (req, res) => {
+  const { ingrediente_id, tipo, quantidade, unidade, motivo } = req.body;
+  if (!ingrediente_id) return res.status(400).json({ erro: 'Informe o ingrediente.' });
+  const r = estoqueCore.aplicarMovimento({ ingrediente_id, tipo, quantidade, unidade, motivo });
+  if (r.erro) return res.status(400).json({ erro: r.erro });
+  const rotulos = { entrada: 'Entrada', saida: 'Baixa', ajuste: 'Ajuste de inventário' };
+  res.json({
+    ingrediente: r.ingrediente,
+    movimento: r.movimento,
+    mensagem: `${rotulos[tipo]} registrada para "${r.ingrediente.nome}".`,
+  });
+});
+
+// Define o estoque mínimo (ponto de reposição) de um ingrediente.
+// Aceita a quantidade na unidade informada e converte para a base.
+router.put('/estoque/:id/minimo', (req, res) => {
+  const ing = storage.buscarIngredientePorId(req.params.id);
+  if (!ing) return res.status(404).json({ erro: 'Ingrediente não encontrado.' });
+  const qtd = parseFloat(req.body.minimo);
+  if (!(qtd >= 0)) return res.status(400).json({ erro: 'Mínimo inválido.' });
+  const un = req.body.unidade || ing.unidade_base;
+  if (!units.existeUnidade(un) || units.unidadeBase(un) !== ing.unidade_base) {
+    return res.status(400).json({ erro: `Unidade incompatível com "${ing.nome}".` });
+  }
+  ing.estoque_minimo = cmvCore.arredondar(units.paraBase(qtd, un), 3);
+  ing.ultima_atualizacao = new Date().toISOString();
+  storage.salvarIngrediente(ing);
+  res.json({ ingrediente: ing, mensagem: 'Estoque mínimo atualizado.' });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO 7 — CAIXA DIÁRIO (ENTRADAS E SAÍDAS)
+// ═══════════════════════════════════════════════════════════════
+
+router.get('/caixa/categorias', (req, res) => {
+  res.json(caixaCore.CATEGORIAS);
+});
+
+router.get('/caixa', (req, res) => {
+  res.json(caixaCore.resumoMensal(req.query.mes));
+});
+
+router.post('/caixa', (req, res) => {
+  const { data, tipo, categoria, descricao, valor } = req.body;
+  if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    return res.status(400).json({ erro: 'Informe a data (AAAA-MM-DD).' });
+  }
+  if (!['entrada', 'saida'].includes(tipo)) {
+    return res.status(400).json({ erro: 'Tipo deve ser "entrada" ou "saida".' });
+  }
+  const v = parseFloat(valor);
+  if (!(v > 0)) return res.status(400).json({ erro: 'O valor deve ser maior que zero.' });
+
+  const lanc = {
+    id: uuidv4(),
+    data,
+    tipo,
+    categoria: (categoria || '').trim() || (tipo === 'entrada' ? 'Outras Entradas' : 'Outras Saídas'),
+    descricao: (descricao || '').trim() || null,
+    valor: cmvCore.arredondar(v, 2),
+    criado_em: new Date().toISOString(),
+  };
+  storage.salvarLancamento(lanc);
+  res.status(201).json({ lancamento: lanc, mensagem: 'Lançamento registrado.' });
+});
+
+router.delete('/caixa/:id', (req, res) => {
+  if (!storage.buscarLancamentoPorId(req.params.id)) {
+    return res.status(404).json({ erro: 'Lançamento não encontrado.' });
+  }
+  storage.deletarLancamento(req.params.id);
+  res.json({ mensagem: 'Lançamento excluído.' });
 });
 
 module.exports = router;
