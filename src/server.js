@@ -6,6 +6,29 @@ const PORT = process.env.PORT || 3001;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+const storage = require('./core/storage');
+
+// No modo Vercel KV, os dados vivem num banco. Antes de cada requisição da API
+// carregamos o estado; depois de o handler montar a resposta, gravamos o que
+// mudou e só então enviamos. No modo local (arquivos) este middleware não roda.
+if (storage.KV_ATIVO) {
+  app.use('/api', async (req, res, next) => {
+    try {
+      await storage.kvHydrate();
+    } catch (e) {
+      return res.status(503).json({ erro: 'Não foi possível acessar o banco de dados. Tente novamente.' });
+    }
+    const enviarJSON = res.json.bind(res);
+    res.json = (body) => {
+      storage.kvFlush()
+        .catch(err => console.error('Falha ao gravar no KV:', err.message))
+        .finally(() => enviarJSON(body));
+      return res;
+    };
+    next();
+  });
+}
+
 const routes = require('./api/routes');
 app.use('/api', routes);
 

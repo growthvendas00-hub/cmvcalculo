@@ -3,15 +3,42 @@
 const fs = require('fs');
 const path = require('path');
 
-// No Vercel o filesystem é somente-leitura; usamos /tmp para escrita.
-// Localmente usamos a pasta /data do projeto.
-const IS_VERCEL = !!process.env.VERCEL;
-const DATA_DIR = IS_VERCEL
-  ? path.join('/tmp', 'cmv-data')
-  : path.join(__dirname, '..', '..', 'data');
+// ═══════════════════════════════════════════════════════════════
+// PERSISTÊNCIA — dois modos, escolhidos automaticamente:
+//
+//  • LOCAL (PC / INICIAR.bat): grava arquivos JSON na pasta /data.
+//  • VERCEL (serverless): grava num banco Vercel KV (Redis Upstash),
+//    porque o disco da Vercel é volátil. Basta ter as variáveis de
+//    ambiente do KV — o código detecta sozinho.
+//
+// A API interna (lerJSON/salvarJSON) continua a mesma, então nenhuma
+// das funções de negócio precisou mudar. No modo KV todos os dados
+// ficam em UMA chave (cmv:db), carregada/gravada por requisição.
+// ═══════════════════════════════════════════════════════════════
 
-// Garante que o diretório existe (necessário na primeira execução no Vercel)
-if (!fs.existsSync(DATA_DIR)) {
+const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+const KV_ATIVO = !!(KV_URL && KV_TOKEN);
+const KV_CHAVE = 'cmv:db';
+
+let redis = null;
+if (KV_ATIVO) {
+  try {
+    const { Redis } = require('@upstash/redis');
+    redis = new Redis({ url: KV_URL, token: KV_TOKEN });
+  } catch (e) {
+    console.error('Falha ao carregar @upstash/redis:', e.message);
+  }
+}
+
+// Banco em memória (usado no modo KV). Chaveado pelo nome do arquivo.
+let DB = {};
+let DB_SUJO = false;       // há alterações a gravar?
+let DB_CARREGADO = false;  // já hidratou ao menos uma vez nesta instância?
+
+// ─── Modo LOCAL: pasta e arquivos ─────────────────────────────────────────────
+const DATA_DIR = path.join(__dirname, '..', '..', 'data');
+if (!KV_ATIVO && !fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
@@ -23,24 +50,34 @@ const MOVIMENTOS_FILE    = path.join(DATA_DIR, 'movimentos_estoque.json');
 const CONTAGENS_FILE     = path.join(DATA_DIR, 'contagens.json');
 const CAIXA_FILE         = path.join(DATA_DIR, 'caixa.json');
 
-// No Vercel, copia os arquivos iniciais para /tmp se ainda não existirem
-if (IS_VERCEL) {
-  const SEED_DIR = path.join(__dirname, '..', '..', 'data');
-  const PADROES = {
-    'custos_fixos.json': '{"meses":[]}',
-    'caixa.json': '{"lancamentos":[]}',
-    'contagens.json': '{"contagens":[]}',
-  };
-  ['ingredientes.json','fichas.json','custos_fixos.json','fornecedores.json','movimentos_estoque.json','contagens.json','caixa.json'].forEach(f => {
-    const dest = path.join(DATA_DIR, f);
-    if (!fs.existsSync(dest)) {
-      try { fs.copyFileSync(path.join(SEED_DIR, f), dest); } catch { fs.writeFileSync(dest, PADROES[f] || '[]'); }
-    }
-  });
+// Nome da coleção a partir do caminho do arquivo (ex.: .../caixa.json → caixa)
+function chaveDe(caminho) { return path.basename(caminho, '.json'); }
+
+function clonar(obj) {
+  return obj === undefined ? obj : JSON.parse(JSON.stringify(obj));
+}
+
+// ─── KV: hidratar (ler tudo) e descarregar (gravar tudo) ──────────────────────
+async function kvHydrate() {
+  if (!KV_ATIVO || !redis) return;
+  const blob = await redis.get(KV_CHAVE); // @upstash/redis já devolve objeto
+  DB = (blob && typeof blob === 'object') ? blob : {};
+  DB_CARREGADO = true;
+  DB_SUJO = false;
+}
+
+async function kvFlush() {
+  if (!KV_ATIVO || !redis || !DB_SUJO) return;
+  await redis.set(KV_CHAVE, DB);
+  DB_SUJO = false;
 }
 
 // Lê JSON removendo BOM (alguns editores/PowerShell gravam UTF-8 com BOM)
 function lerJSON(caminho, padrao) {
+  if (KV_ATIVO) {
+    const v = DB[chaveDe(caminho)];
+    return v === undefined ? padrao : clonar(v);
+  }
   try {
     const conteudo = fs.readFileSync(caminho, 'utf-8').replace(/^﻿/, '').trim();
     if (!conteudo) return padrao;
@@ -51,6 +88,11 @@ function lerJSON(caminho, padrao) {
 }
 
 function salvarJSON(caminho, dados) {
+  if (KV_ATIVO) {
+    DB[chaveDe(caminho)] = dados;
+    DB_SUJO = true;
+    return;
+  }
   fs.writeFileSync(caminho, JSON.stringify(dados, null, 2), 'utf-8');
 }
 
@@ -224,6 +266,9 @@ function deletarLancamento(id) {
 }
 
 module.exports = {
+  KV_ATIVO,
+  kvHydrate,
+  kvFlush,
   listarIngredientes,
   buscarIngredientePorId,
   buscarIngredientePorNome,
