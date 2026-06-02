@@ -15,11 +15,28 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { scroll-behavior: smooth; }
+
 body {
   font-family: 'Segoe UI', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+/* Foco acessível e discreto */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* Toque tátil em qualquer botão (feedback ao pressionar) */
+button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button:active { transform: translateY(1px); }
+
+/* Respeita quem prefere menos animação */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
 /* ─── Header ─────────────────────────────────────────────────── */
@@ -53,7 +70,15 @@ header {
   padding: 12px 32px 0;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
   background: transparent;
   border: none;
@@ -62,15 +87,21 @@ header {
   cursor: pointer;
   font-size: 0.9rem;
   border-bottom: 2px solid transparent;
-  transition: all 0.2s;
+  transition: color 0.18s, background 0.18s, border-color 0.18s;
   border-radius: 6px 6px 0 0;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tab:hover { color: var(--text); background: var(--surface2); }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
 /* ─── Tab Content ─────────────────────────────────────────────── */
 .tab-content { display: none; padding: 28px 32px; max-width: 1200px; margin: 0 auto; }
-.tab-content.active { display: block; }
+.tab-content.active { display: block; animation: tabIn 0.28s ease; }
+@keyframes tabIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* ─── Section Header ──────────────────────────────────────────── */
 .section-header {
@@ -322,17 +353,26 @@ tbody td { padding: 12px 16px; font-size: 0.9rem; }
   justify-content: center;
   z-index: 1000;
   padding: 20px;
+  animation: modalFade 0.2s ease;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
 }
 .modal.hidden { display: none; }
 .modal-box {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   width: 100%;
   max-width: 520px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: var(--shadow);
+  animation: modalPop 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+@keyframes modalFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalPop {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .modal-large { max-width: 820px; }
 .modal-header {
@@ -898,19 +938,117 @@ form { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
 .caixa-tipo-opt.entrada:has(input:checked) { border-color: var(--green); background: rgba(39,174,96,0.12); color: var(--green); }
 .caixa-tipo-opt.saida:has(input:checked) { border-color: var(--red); background: rgba(231,76,60,0.12); color: var(--red); }
 
+/* ─── Refinamentos de interação (UI/UX v4) ────────────────────── */
+.btn-primary, .btn-secondary, .btn-confirm {
+  transition: transform 0.12s ease, opacity 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,166,35,0.25); }
+.btn-confirm:hover { transform: translateY(-1px); }
+.btn-edit, .btn-danger { transition: background 0.15s, transform 0.12s ease; }
+
+/* Cards reagem suavemente ao passar o mouse */
+.ficha-card, .resumo-card, .compra-card, .caixa-dia {
+  transition: transform 0.18s ease, border-color 0.2s, box-shadow 0.2s;
+}
+.resumo-card:hover, .compra-card:hover, .caixa-dia:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+}
+.ficha-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.22); }
+
+/* Inputs/selects mais macios ao focar */
+.form-group input, .form-group select, .seletor-mes {
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+}
+.form-group input:focus, .form-group select:focus, .seletor-mes:focus {
+  box-shadow: 0 0 0 3px rgba(245,166,35,0.15);
+}
+
+/* Linhas de tabela com transição suave */
+tbody tr { transition: background 0.14s; }
+
+/* Container para tabelas largas rolarem de lado sem estourar o layout */
+.tabela-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tabela-scroll::-webkit-scrollbar { height: 6px; }
+.tabela-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
 /* ─── Responsivo ──────────────────────────────────────────────── */
+
+/* Telas médias: resumos em 2 colunas confortáveis */
+@media (max-width: 760px) {
+  .relatorio-resumo { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .resumo-card { padding: 14px 12px; }
+  .resumo-card .valor { font-size: 1.4rem; }
+}
+
 @media (max-width: 700px) {
-  header { flex-direction: column; gap: 10px; align-items: flex-start; }
+  header { flex-direction: row; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 16px; }
+  .logo-icon { font-size: 1.8rem; }
+  .logo h1 { font-size: 1.25rem; }
+  .status-servidor { font-size: 0.7rem; padding: 4px 9px; }
+
+  .tabs { padding: 8px 12px 0; gap: 2px; }
+  .tab { padding: 9px 14px; font-size: 0.82rem; }
+  .tab-content { padding: 18px 14px; }
+
+  /* Cabeçalho de seção empilha e botões ocupam a largura toda */
+  .section-header { flex-direction: column; align-items: stretch; gap: 12px; }
+  .section-header > div { display: flex; gap: 8px; }
+  .section-header > div .btn-primary,
+  .section-header > div .btn-secondary { flex: 1; text-align: center; }
+
   .compra-card-top { flex-direction: column; }
   .compra-precos { width: 100%; justify-content: space-between; }
-  header { padding: 14px 16px; }
-  .tabs { padding: 10px 16px 0; gap: 0; flex-wrap: wrap; }
-  .tab { padding: 10px 14px; font-size: 0.8rem; }
-  .tab-content { padding: 20px 16px; }
   .ingrediente-linha { grid-template-columns: 1fr 1fr; }
   .ref-linha { grid-template-columns: 1fr; }
   .custos-grid { grid-template-columns: 1fr; }
   .custos-card-rateio { grid-column: auto; }
-  .lista-compras-item { grid-template-columns: 1fr; gap: 6px; }
+  .lista-compras-item { grid-template-columns: 1fr auto; gap: 6px 10px; }
   .caixa-dia-header { flex-direction: column; align-items: flex-start; }
+  .caixa-dia-totais { width: 100%; justify-content: space-between; }
+
+  /* Modais ocupam a tela toda no celular, colados embaixo (mais fáceis de alcançar) */
+  .modal { padding: 0; align-items: flex-end; }
+  .modal-box, .modal-large { max-width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
+  @keyframes modalPop { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+  .form-row { flex-direction: column; gap: 14px; }
+  form { padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); }
+
+  /* ── Tabelas viram cartões empilhados (nada de scroll horizontal travado) ── */
+  .card table thead { display: none; }
+  .card table, .card tbody { display: block; width: 100%; }
+  .card tbody tr {
+    display: block;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 0;
+    border: none;
+    text-align: right;
+    font-size: 0.88rem;
+  }
+  .card tbody td::before {
+    content: attr(data-label);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: left;
+  }
+  /* A célula de ações vira uma faixa de botões alinhada */
+  .card tbody td.cell-acoes { display: block; padding-top: 10px; }
+  .card tbody td.cell-acoes::before { display: block; margin-bottom: 6px; }
+  .acoes-cell { justify-content: flex-start; }
+  .acoes-cell button { flex: 1; min-width: 72px; padding: 8px 10px; }
+}
+
+@media (max-width: 420px) {
+  .relatorio-resumo { grid-template-columns: 1fr 1fr; }
+  .caixa-dia-totais { font-size: 0.78rem; gap: 8px; }
 }

@@ -216,10 +216,10 @@ const Ingredientes = {
       const ultima = ing.historico?.length ? Fmt.data(ing.historico[ing.historico.length-1].data) : '—';
       const nomeJS = ing.nome.replace(/'/g, "\\'");
       return `<tr>
-        <td><strong>${ing.nome}</strong> <small style="color:var(--text-muted)">(${ing.unidade_base})</small></td>
-        <td>${custo}</td>
-        <td style="color:var(--text-muted)">${ultima}</td>
-        <td><div class="acoes-cell">
+        <td data-label="Ingrediente"><strong>${ing.nome}</strong> <small style="color:var(--text-muted)">(${ing.unidade_base})</small></td>
+        <td data-label="Custo Atual">${custo}</td>
+        <td data-label="Última Compra" style="color:var(--text-muted)">${ultima}</td>
+        <td class="cell-acoes" data-label="Ações"><div class="acoes-cell">
           <button class="${temPreco ? 'btn-edit' : 'btn-confirm'}" onclick="Ingredientes.registrarPreco('${ing.id}')">${temPreco ? 'Nova Compra' : 'Registrar Preço'}</button>
           <button class="btn-edit" onclick="Ingredientes.editar('${ing.id}')">Editar</button>
           <button class="btn-danger" onclick="Ingredientes.excluir('${ing.id}','${nomeJS}')">Excluir</button>
@@ -551,12 +551,12 @@ const Fichas = {
       ? `<div class="totais-item"><span>Custos Fixos (rateio${cmv.rateio_competencia?' '+Fmt.competencia(cmv.rateio_competencia):''})</span><strong style="color:var(--yellow)">${Fmt.moeda(cmv.custo_rateio)}</strong></div>` : '';
     cont.innerHTML = `<div style="padding:20px">
       <div class="cmv-indicator cmv-${cmv.indicador_classe}" style="margin-bottom:16px;font-size:0.95rem">${cmv.indicador} — CMV: <strong>${Fmt.pct(cmv.cmv_percentual)}</strong></div>
-      <table class="detalhe-tabela">
+      <div class="tabela-scroll"><table class="detalhe-tabela">
         <thead><tr>
           <th>Ingrediente</th><th style="text-align:right">Qtd</th><th style="text-align:center">Fator</th>
           <th style="text-align:right">Qtd Real</th><th style="text-align:right">Custo/Un</th><th style="text-align:right">Custo Porção</th>
         </tr></thead><tbody>${rows}</tbody>
-      </table>
+      </table></div>
       <div class="totais-bloco">
         <div class="totais-item"><span>Insumos</span><strong>${Fmt.moeda(cmv.custo_total_insumos)}</strong></div>
         <div class="totais-item"><span>Embalagem</span><strong>${Fmt.moeda(cmv.custo_embalagem)}</strong></div>
@@ -607,10 +607,10 @@ const Relatorio = {
             <span style="color:var(--text-muted)">▾</span></div>
         </div>
         <div class="relatorio-produto-body" style="display:none">
-          <table class="detalhe-tabela"><thead><tr>
+          <div class="tabela-scroll"><table class="detalhe-tabela"><thead><tr>
             <th>Ingrediente</th><th style="text-align:right">Qtd</th><th style="text-align:center">Fator</th>
             <th style="text-align:right">Custo/Un</th><th style="text-align:right">Custo Porção</th></tr></thead>
-            <tbody>${rows}</tbody></table>
+            <tbody>${rows}</tbody></table></div>
           <div class="totais-bloco">
             <div class="totais-item"><span>Insumos</span><strong>${Fmt.moeda(cmv.custo_total_insumos)}</strong></div>
             <div class="totais-item"><span>Embalagem</span><strong>${Fmt.moeda(cmv.custo_embalagem)}</strong></div>
@@ -778,13 +778,13 @@ const Compras = {
       ${!igualMelhor && a.acima_do_melhor > 0
         ? `<div class="compra-dica">💰 Você está pagando <strong>${a.acima_do_melhor}%</strong> acima do melhor preço já conseguido. Vale negociar.</div>`
         : (igualMelhor ? `<div class="compra-dica ok">✓ Você está no melhor preço já registrado.</div>` : '')}
-      <table class="detalhe-tabela compra-tabela">
+      <div class="tabela-scroll"><table class="detalhe-tabela compra-tabela">
         <thead><tr>
           <th>Data</th><th>Fornecedor</th><th style="text-align:right">Qtd</th>
           <th style="text-align:right">Total</th><th style="text-align:right">Custo/Un</th>
         </tr></thead>
         <tbody>${linhas}</tbody>
-      </table>
+      </table></div>
     </div>`;
   },
 };
@@ -848,14 +848,14 @@ const Estoque = {
       const badge = { ok:'<span class="badge-estoque ok">Em estoque</span>', baixo:'<span class="badge-estoque baixo">Baixo</span>', zerado:'<span class="badge-estoque zerado">Zerado</span>' }[i.situacao];
       const minimo = i.minimo_base > 0 ? fmtQtd(i.minimo_exibicao, i.unidade_exibicao) : '<span style="color:var(--text-muted)">—</span>';
       return `<tr>
-        <td><strong>${i.nome}</strong></td>
-        <td style="text-align:right"><strong>${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</strong></td>
-        <td style="text-align:right;color:var(--text-muted)">${minimo}</td>
-        <td style="text-align:right">${i.tem_preco ? Fmt.moeda(i.valor_estoque) : '<span class="badge-sem-preco">sem preço</span>'}</td>
-        <td style="text-align:center">${badge}</td>
-        <td><div class="acoes-cell">
-          <button class="btn-confirm" onclick="Estoque.abrirMovimento('${i.id}','entrada')" title="Registrar entrada">＋</button>
-          <button class="btn-danger" onclick="Estoque.abrirMovimento('${i.id}','saida')" title="Dar baixa">－</button>
+        <td data-label="Ingrediente"><strong>${i.nome}</strong></td>
+        <td data-label="Em Estoque" style="text-align:right"><strong>${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</strong></td>
+        <td data-label="Mínimo" style="text-align:right;color:var(--text-muted)">${minimo}</td>
+        <td data-label="Valor Parado" style="text-align:right">${i.tem_preco ? Fmt.moeda(i.valor_estoque) : '<span class="badge-sem-preco">sem preço</span>'}</td>
+        <td data-label="Situação" style="text-align:center">${badge}</td>
+        <td class="cell-acoes" data-label="Ações"><div class="acoes-cell">
+          <button class="btn-confirm" onclick="Estoque.abrirMovimento('${i.id}','entrada')" title="Registrar entrada">＋ Entrada</button>
+          <button class="btn-danger" onclick="Estoque.abrirMovimento('${i.id}','saida')" title="Dar baixa">－ Baixa</button>
           <button class="btn-edit" onclick="Estoque.abrirMovimento('${i.id}','ajuste')">Ajustar</button>
           <button class="btn-edit" onclick="Estoque.abrirMinimo('${i.id}')">Mínimo</button>
         </div></td>
