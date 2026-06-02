@@ -20,6 +20,7 @@ const FICHAS_FILE        = path.join(DATA_DIR, 'fichas.json');
 const CUSTOS_FILE        = path.join(DATA_DIR, 'custos_fixos.json');
 const FORNECEDORES_FILE  = path.join(DATA_DIR, 'fornecedores.json');
 const MOVIMENTOS_FILE    = path.join(DATA_DIR, 'movimentos_estoque.json');
+const CONTAGENS_FILE     = path.join(DATA_DIR, 'contagens.json');
 const CAIXA_FILE         = path.join(DATA_DIR, 'caixa.json');
 
 // No Vercel, copia os arquivos iniciais para /tmp se ainda não existirem
@@ -28,8 +29,9 @@ if (IS_VERCEL) {
   const PADROES = {
     'custos_fixos.json': '{"meses":[]}',
     'caixa.json': '{"lancamentos":[]}',
+    'contagens.json': '{"contagens":[]}',
   };
-  ['ingredientes.json','fichas.json','custos_fixos.json','fornecedores.json','movimentos_estoque.json','caixa.json'].forEach(f => {
+  ['ingredientes.json','fichas.json','custos_fixos.json','fornecedores.json','movimentos_estoque.json','contagens.json','caixa.json'].forEach(f => {
     const dest = path.join(DATA_DIR, f);
     if (!fs.existsSync(dest)) {
       try { fs.copyFileSync(path.join(SEED_DIR, f), dest); } catch { fs.writeFileSync(dest, PADROES[f] || '[]'); }
@@ -178,6 +180,25 @@ function salvarMovimento(mov) {
   salvarJSON(MOVIMENTOS_FILE, lista);
 }
 
+// ─── Contagens de Estoque (inventário inicial + conferências diárias) ─────────
+
+function listarContagens() {
+  const dados = lerJSON(CONTAGENS_FILE, { contagens: [] });
+  const lista = Array.isArray(dados.contagens) ? dados.contagens : [];
+  return lista.slice().sort((a, b) => new Date(b.data) - new Date(a.data));
+}
+
+function salvarContagem(contagem) {
+  const lista = listarContagens();
+  lista.push(contagem);
+  salvarJSON(CONTAGENS_FILE, { contagens: lista });
+}
+
+function ultimaContagem() {
+  const lista = listarContagens();
+  return lista.length ? lista[0] : null;
+}
+
 // ─── Caixa Diário (entradas e saídas por dia) ─────────────────────────────────
 // Estrutura: { lancamentos: [ { id, data:"2026-06-01", tipo, categoria, descricao, valor } ] }
 
@@ -211,6 +232,9 @@ module.exports = {
   listarMovimentos,
   listarMovimentosPorIngrediente,
   salvarMovimento,
+  listarContagens,
+  salvarContagem,
+  ultimaContagem,
   listarLancamentos,
   buscarLancamentoPorId,
   salvarLancamento,

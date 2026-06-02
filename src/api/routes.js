@@ -273,6 +273,20 @@ function enriquecerMes(mes) {
   return { ...mes, ...cmvCore.calcularRateioMes(mes) };
 }
 
+// Aplica as vendas do mês: aceita o detalhamento por tipo (vendas_detalhe)
+// e/ou o total único (vendas_mes). O total é sempre recalculado da fonte.
+function aplicarVendas(mes, body) {
+  if (body.vendas_detalhe && typeof body.vendas_detalhe === 'object') {
+    mes.vendas_detalhe = {};
+    cmvCore.VENDAS_TIPOS.forEach(t => {
+      mes.vendas_detalhe[t] = Math.max(0, parseInt(body.vendas_detalhe[t], 10) || 0);
+    });
+    mes.vendas_mes = cmvCore.totalVendasMes(mes);
+  } else if (body.vendas_mes !== undefined) {
+    mes.vendas_mes = Math.max(0, parseInt(body.vendas_mes, 10) || 0);
+  }
+}
+
 router.get('/custos-fixos', (req, res) => {
   const meses = storage.listarMeses().map(enriquecerMes);
   res.json({ meses, mes_ativo: meses[0] || null });
@@ -294,7 +308,7 @@ router.post('/custos-fixos', (req, res) => {
   }
   const mes = { id: uuidv4(), competencia, criado_em: new Date().toISOString() };
   cmvCore.CATEGORIAS_FIXAS.forEach(c => { mes[c] = parseFloat(req.body[c]) || 0; });
-  mes.vendas_mes = parseFloat(req.body.vendas_mes) || 0;
+  aplicarVendas(mes, req.body);
   mes.ultima_atualizacao = new Date().toISOString();
   storage.salvarMes(mes);
   res.status(201).json({ mes: enriquecerMes(mes), mensagem: `Mês ${competencia} criado.` });
@@ -306,7 +320,7 @@ router.put('/custos-fixos/:id', (req, res) => {
   cmvCore.CATEGORIAS_FIXAS.forEach(c => {
     if (req.body[c] !== undefined) mes[c] = parseFloat(req.body[c]) || 0;
   });
-  if (req.body.vendas_mes !== undefined) mes.vendas_mes = parseFloat(req.body.vendas_mes) || 0;
+  aplicarVendas(mes, req.body);
   mes.ultima_atualizacao = new Date().toISOString();
   storage.salvarMes(mes);
 
@@ -411,6 +425,21 @@ router.post('/estoque/movimento', (req, res) => {
     movimento: r.movimento,
     mensagem: `${rotulos[tipo]} registrada para "${r.ingrediente.nome}".`,
   });
+});
+
+// Registra uma CONTAGEM (inventário inicial ou conferência de fechamento).
+// Body: { tipo?, observacao?, itens: [{ ingrediente_id, contado, unidade }] }
+router.post('/estoque/contagem', (req, res) => {
+  const { tipo, observacao, itens } = req.body;
+  const r = estoqueCore.registrarContagem({ tipo, observacao, itens });
+  if (r.erro) return res.status(400).json({ erro: r.erro });
+  const titulo = r.contagem.tipo === 'inicial' ? 'Inventário inicial salvo' : 'Conferência registrada';
+  res.status(201).json({ contagem: r.contagem, mensagem: `${titulo} (${r.contagem.total_itens} itens).` });
+});
+
+// Histórico de contagens (mais recentes primeiro)
+router.get('/estoque/contagens', (req, res) => {
+  res.json(storage.listarContagens());
 });
 
 // Define o estoque mínimo (ponto de reposição) de um ingrediente.

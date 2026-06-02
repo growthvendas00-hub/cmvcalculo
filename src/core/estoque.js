@@ -16,6 +16,12 @@
 const storage = require('./storage');
 const units = require('./units');
 const { arredondar } = require('./cmv');
+const { v4: uuidv4 } = require('uuid');
+
+// Converte um custo por unidade base para a quantidade "amigável" (kg/L/un)
+function exibFator(unidadeBase) {
+  return units.UNIDADE_EXIBICAO[unidadeBase]?.fator || 1;
+}
 
 // Quantidade base atual do ingrediente (tolerante a campo ausente/legado)
 function estoqueAtual(ing) {
@@ -98,7 +104,7 @@ function aplicarMovimento({ ingrediente_id, tipo, quantidade, unidade, motivo })
   storage.salvarIngrediente(ing);
 
   const registro = {
-    id: require('uuid').v4(),
+    id: uuidv4(),
     ingrediente_id,
     ingrediente_nome: ing.nome,
     tipo,
@@ -114,7 +120,107 @@ function aplicarMovimento({ ingrediente_id, tipo, quantidade, unidade, motivo })
   return { ingrediente: ing, movimento: registro };
 }
 
-// Visão geral do estoque (lista + totais + lista de compras)
+// ───────────────────────────────────────────────────────────────
+// CONTAGEM (inventário inicial + conferência de fechamento)
+// ───────────────────────────────────────────────────────────────
+// Fluxo de hamburgueria:
+//   • 1º dia → INVENTÁRIO INICIAL: conta tudo e preenche a base.
+//   • Todo fim de expediente → CONFERÊNCIA: conta o que sobrou.
+//
+// O consumo do período = (estoque do sistema antes da contagem) − (contado).
+// Como as compras já entram no estoque na hora, esse número embute
+// vendas + perdas/quebras. É o "saiu do estoque hoje".
+// Se o contado for MAIOR que o sistema, registramos como sobra
+// (provável entrada não lançada), sem virar consumo negativo.
+
+function registrarContagem({ itens, tipo, observacao }) {
+  if (!Array.isArray(itens) || itens.length === 0) {
+    return { erro: 'Nenhum item informado para a contagem.' };
+  }
+
+  const houvePrimeira = !!storage.ultimaContagem();
+  const tipoFinal = tipo || (houvePrimeira ? 'diaria' : 'inicial');
+  const agora = new Date().toISOString();
+
+  const detalhe = [];
+  let valor_consumo = 0;     // R$ que saiu do estoque (consumo + perdas)
+  let valor_contado = 0;     // R$ parado após a contagem
+  let valor_sobra = 0;       // R$ de sobra (contado > sistema)
+
+  for (const item of itens) {
+    const ing = storage.buscarIngredientePorId(item.ingrediente_id);
+    if (!ing) continue;
+
+    const un = item.unidade || ing.unidade_base;
+    if (!units.existeUnidade(un) || units.unidadeBase(un) !== ing.unidade_base) {
+      return { erro: `Unidade incompatível com "${ing.nome}".` };
+    }
+    const contadoNum = Number(item.contado);
+    if (!(contadoNum >= 0)) {
+      return { erro: `Quantidade inválida para "${ing.nome}".` };
+    }
+
+    const contadoBase = arredondar(units.paraBase(contadoNum, un), 3);
+    const antes = estoqueAtual(ing);
+    const diff = arredondar(antes - contadoBase, 3); // positivo = saiu
+    const custo_base = Number(ing.custo_base) || 0;
+
+    // Atualiza o estoque para o valor contado (verdade física)
+    ing.estoque_atual = contadoBase;
+    ing.ultima_atualizacao = agora;
+    storage.salvarIngrediente(ing);
+
+    // Loga o movimento de contagem
+    storage.salvarMovimento({
+      id: uuidv4(),
+      ingrediente_id: ing.id,
+      ingrediente_nome: ing.nome,
+      tipo: 'contagem',
+      quantidade_base: arredondar(contadoBase - antes, 3),
+      unidade_base: ing.unidade_base,
+      estoque_antes: antes,
+      estoque_depois: contadoBase,
+      motivo: tipoFinal === 'inicial' ? 'Inventário inicial' : 'Conferência de fechamento',
+      data: agora,
+    });
+
+    const consumo_base = diff > 0 ? diff : 0;
+    const sobra_base = diff < 0 ? -diff : 0;
+    const fator = exibFator(ing.unidade_base);
+    valor_consumo += consumo_base * custo_base;
+    valor_sobra += sobra_base * custo_base;
+    valor_contado += contadoBase * custo_base;
+
+    detalhe.push({
+      ingrediente_id: ing.id,
+      nome: ing.nome,
+      unidade_base: ing.unidade_base,
+      unidade_exibicao: units.exibicao(custo_base, ing.unidade_base).unidade,
+      sistema_exibicao: arredondar(antes / fator, 3),
+      contado_exibicao: arredondar(contadoBase / fator, 3),
+      diferenca_exibicao: arredondar(diff / fator, 3),
+      consumo_valor: arredondar(consumo_base * custo_base, 2),
+      sobra_valor: arredondar(sobra_base * custo_base, 2),
+    });
+  }
+
+  const contagem = {
+    id: uuidv4(),
+    tipo: tipoFinal,
+    data: agora,
+    observacao: (observacao || '').trim() || null,
+    total_itens: detalhe.length,
+    valor_consumo: arredondar(valor_consumo, 2),
+    valor_sobra: arredondar(valor_sobra, 2),
+    valor_contado: arredondar(valor_contado, 2),
+    itens_com_consumo: detalhe.filter(d => d.consumo_valor > 0).length,
+    detalhe,
+  };
+  storage.salvarContagem(contagem);
+  return { contagem };
+}
+
+// Visão geral do estoque (lista + totais + lista de compras + status de contagem)
 function panorama() {
   const itens = storage.listarIngredientes().map(visaoIngrediente);
 
@@ -128,6 +234,9 @@ function panorama() {
 
   itens.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
+  const ultima = storage.ultimaContagem();
+  const semPreco = itens.filter(i => !i.tem_preco).map(i => i.nome);
+
   return {
     itens,
     valor_total_estoque: valor_total,
@@ -135,6 +244,9 @@ function panorama() {
     itens_zerados: itens.filter(i => i.situacao === 'zerado').length,
     itens_abaixo_minimo: itens.filter(i => i.situacao === 'baixo').length,
     lista_compras,
+    sem_preco: semPreco,
+    ja_fez_contagem: !!ultima,
+    ultima_contagem: ultima ? { data: ultima.data, tipo: ultima.tipo, valor_consumo: ultima.valor_consumo } : null,
   };
 }
 
@@ -143,5 +255,6 @@ module.exports = {
   estoqueMinimo,
   visaoIngrediente,
   aplicarMovimento,
+  registrarContagem,
   panorama,
 };

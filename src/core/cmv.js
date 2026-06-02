@@ -9,6 +9,21 @@ const CATEGORIAS_FIXAS = [
   'internet', 'marketing', 'manutencao', 'outros',
 ];
 
+// Tipos de produto vendidos (espelham os tipos das fichas) — usados para
+// registrar as vendas do mês em quantidade (origem: cardápio digital).
+const VENDAS_TIPOS = ['hamburguer', 'pizza', 'bebida', 'porcao', 'outro'];
+
+// Total de produtos vendidos no mês: soma o detalhamento por tipo se houver,
+// senão usa o campo único vendas_mes (compatibilidade com meses antigos).
+function totalVendasMes(mes) {
+  if (!mes) return 0;
+  if (mes.vendas_detalhe && typeof mes.vendas_detalhe === 'object') {
+    const soma = VENDAS_TIPOS.reduce((s, t) => s + (parseFloat(mes.vendas_detalhe[t]) || 0), 0);
+    if (soma > 0) return soma;
+  }
+  return parseFloat(mes.vendas_mes) || 0;
+}
+
 // Arredonda preservando precisão. Padrão monetário (centavos) = 2 casas.
 function arredondar(valor, casas = 2) {
   const f = Math.pow(10, casas);
@@ -32,7 +47,7 @@ function temPreco(ing) {
 function calcularRateioMes(mes) {
   if (!mes) return { total_mensal: 0, custo_por_produto: 0, vendas_mes: 0 };
   const total = CATEGORIAS_FIXAS.reduce((s, c) => s + (parseFloat(mes[c]) || 0), 0);
-  const vendas = parseFloat(mes.vendas_mes) || 0;
+  const vendas = totalVendasMes(mes);
   return {
     total_mensal: arredondar(total),
     custo_por_produto: vendas > 0 ? arredondar(total / vendas, 4) : 0,
@@ -162,6 +177,8 @@ function propagarPreco(ingrediente_id) {
 
 module.exports = {
   CATEGORIAS_FIXAS,
+  VENDAS_TIPOS,
+  totalVendasMes,
   arredondar,
   calcularCustoBase,
   calcularRateioMes,

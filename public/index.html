@@ -81,7 +81,10 @@
 <section id="tab-estoque" class="tab-content">
   <div class="section-header">
     <h2>Controle de Estoque</h2>
-    <button class="btn-secondary" onclick="Estoque.carregar()">↻ Atualizar</button>
+    <div style="display:flex;gap:10px">
+      <button class="btn-secondary" onclick="Estoque.carregar()">↻ Atualizar</button>
+      <button class="btn-primary" id="btn-contagem" onclick="Estoque.abrirContagem()">📋 Contagem do Dia</button>
+    </div>
   </div>
 
   <div class="tutorial-box" id="tutorial-estoque">
@@ -91,16 +94,16 @@
     </div>
     <div class="tutorial-corpo collapsed">
       <div class="tutorial-bloco">
-        <span class="tutorial-label">O QUE É</span>
-        <p>Mostra <strong>quanto você tem de cada item</strong>, o <strong>dinheiro parado</strong> em estoque e <strong>o que precisa comprar</strong>. Toda compra registrada na aba Ingredientes já entra aqui automaticamente.</p>
+        <span class="tutorial-label">1º DIA — INVENTÁRIO INICIAL</span>
+        <p>Os itens vêm da aba <strong>Ingredientes</strong> (precisam ter preço para o valor sair certo). No primeiro dia você clica em <strong>Contagem do Dia</strong> e preenche <strong>quanto tem de cada um</strong>. Pronto: essa é a base.</p>
       </div>
       <div class="tutorial-bloco tutorial-info">
-        <span class="tutorial-label">ENTRADA, BAIXA E AJUSTE</span>
-        <p><strong>Entrada:</strong> chegou mercadoria. <strong>Baixa:</strong> perda, quebra ou uso. <strong>Ajuste:</strong> você contou a prateleira e informa o valor real — o sistema corrige sozinho.</p>
+        <span class="tutorial-label">TODO DIA — CONFERÊNCIA DE FECHAMENTO</span>
+        <p>No fim do expediente, abra a <strong>Contagem do Dia</strong> e digite o que <strong>sobrou na prateleira</strong>. O sistema calcula sozinho <strong>quanto saiu</strong> (vendas + perdas) e atualiza o valor do estoque. Compras feitas no dia já entram automático.</p>
       </div>
       <div class="tutorial-bloco tutorial-alerta">
-        <span class="tutorial-label">ESTOQUE MÍNIMO</span>
-        <p>Defina o mínimo de cada item (ponto de reposição). Quando o estoque chegar nesse nível, ele aparece na <strong>Lista de Compras</strong> — assim você nunca fica na mão no meio do movimento.</p>
+        <span class="tutorial-label">ESTOQUE MÍNIMO = LISTA DE COMPRAS</span>
+        <p>Defina o mínimo de cada item (ponto de reposição). Quando a contagem chega nesse nível, ele entra na <strong>Lista de Compras</strong> — você nunca fica na mão no meio do movimento.</p>
       </div>
     </div>
   </div>
@@ -131,6 +134,8 @@
       </tbody>
     </table>
   </div>
+
+  <div id="estoque-historico" style="margin-top:24px"></div>
 </section>
 
 <!-- ══════════════════════ MÓDULO 2 — FICHAS TÉCNICAS ══════════════════════ -->
@@ -350,17 +355,46 @@
           </div>
         </div>
 
+        <div class="card custos-card custos-card-vendas">
+          <div class="custos-secao-titulo">🧾 Vendas do Mês (quantidade)</div>
+          <div class="custos-aviso" style="margin-bottom:4px">
+            <strong>De onde tirar:</strong> pegue no relatório do seu <em>cardápio digital / app de delivery</em> quantos itens de cada tipo foram vendidos no mês. É esse número que mostra quantos produtos você realmente vende.
+          </div>
+          <div class="vendas-grid">
+            <div class="form-group">
+              <label class="campo-com-dica">🍔 Hambúrgueres<span class="dica-icone" data-dica="Quantidade de hambúrgueres vendidos no mês (todos os sabores somados).">?</span></label>
+              <input id="cv-hamburguer" type="number" min="0" step="1" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label class="campo-com-dica">🍕 Pizzas<span class="dica-icone" data-dica="Quantidade de pizzas vendidas no mês.">?</span></label>
+              <input id="cv-pizza" type="number" min="0" step="1" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label class="campo-com-dica">🥤 Bebidas<span class="dica-icone" data-dica="Refrigerantes, sucos, cervejas, água — total de unidades vendidas.">?</span></label>
+              <input id="cv-bebida" type="number" min="0" step="1" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label class="campo-com-dica">🍟 Porções<span class="dica-icone" data-dica="Batatas, fritas, acompanhamentos e entradas vendidos no mês.">?</span></label>
+              <input id="cv-porcao" type="number" min="0" step="1" placeholder="0" />
+            </div>
+            <div class="form-group">
+              <label class="campo-com-dica">🍽 Outros<span class="dica-icone" data-dica="Sobremesas, combos e qualquer outro item vendido que não se encaixe acima.">?</span></label>
+              <input id="cv-outro" type="number" min="0" step="1" placeholder="0" />
+            </div>
+            <div class="vendas-total-box">
+              <span>Total de produtos vendidos</span>
+              <strong id="vendas-total">0</strong>
+            </div>
+          </div>
+        </div>
+
         <div class="card custos-card custos-card-rateio">
           <div class="custos-secao-titulo">📐 Rateio por Produto</div>
-          <div class="form-group">
-            <label class="campo-com-dica">Produtos Vendidos no Mês (unidades)<span class="dica-icone" data-dica="Some TODOS os itens vendidos no mês: hambúrgueres + pizzas + bebidas + porções. Use a média de meses normais.">?</span></label>
-            <input id="cf-vendas" type="number" min="0" step="1" placeholder="Ex: 400" />
-            <small class="campo-hint">Total de itens individuais vendidos no mês</small>
-          </div>
           <div class="custo-rateio-resultado">
             <div class="rateio-linha"><span>Total de Custos Fixos</span><strong id="rateio-total">R$ 0,00</strong></div>
+            <div class="rateio-linha"><span>Produtos Vendidos no Mês</span><strong id="rateio-vendas">0</strong></div>
             <div class="rateio-linha rateio-destaque"><span>Custo Fixo por Produto</span><strong id="rateio-por-produto">R$ 0,00</strong></div>
-            <p class="rateio-explicacao" id="rateio-explicacao">Preencha os custos e o volume de vendas.</p>
+            <p class="rateio-explicacao" id="rateio-explicacao">Preencha os custos e as vendas do mês.</p>
           </div>
           <div class="custos-aviso">
             <strong>Como usar:</strong> ative <em>"Incluir Rateio"</em> ao criar/editar uma Ficha Técnica para somar este valor ao CMV e ver o custo real do produto.
@@ -646,6 +680,30 @@
         <button type="submit" class="btn-primary">Salvar</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: CONTAGEM DE ESTOQUE ══════════════════════ -->
+<div id="modal-contagem" class="modal hidden">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3 id="modal-contagem-titulo">Contagem do Dia</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-contagem')">✕</button>
+    </div>
+    <div class="contagem-wrap">
+      <div class="contagem-ajuda" id="contagem-ajuda"></div>
+      <div class="contagem-lista" id="contagem-lista"></div>
+    </div>
+    <div class="contagem-rodape">
+      <div class="contagem-totais">
+        <div><span>Valor contado</span><strong id="contagem-valor">R$ 0,00</strong></div>
+        <div><span id="contagem-saiu-label">Saiu do estoque</span><strong id="contagem-saiu" style="color:var(--red)">R$ 0,00</strong></div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-contagem')">Cancelar</button>
+        <button type="button" class="btn-primary" id="contagem-salvar" onclick="Estoque.salvarContagem()">Salvar Contagem</button>
+      </div>
+    </div>
   </div>
 </div>
 

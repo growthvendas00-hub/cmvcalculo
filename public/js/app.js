@@ -627,6 +627,7 @@ const Relatorio = {
 // MÓDULO 4 — CUSTOS FIXOS MENSAIS
 // ═══════════════════════════════════════════════════════════════
 const CAMPOS_CF = ['aluguel','energia','gas','salarios','agua','internet','marketing','manutencao','outros'];
+const VENDAS_TIPOS = ['hamburguer','pizza','bebida','porcao','outro'];
 
 const CustosFixos = {
   async carregar() {
@@ -652,24 +653,42 @@ const CustosFixos = {
     document.getElementById('custos-vazio').style.display = 'none';
     document.getElementById('custos-formulario').style.display = 'block';
     CAMPOS_CF.forEach(c => { document.getElementById('cf-'+c).value = _mesAtivo[c] || ''; });
-    document.getElementById('cf-vendas').value = _mesAtivo.vendas_mes || '';
+    // Vendas por tipo (com retrocompatibilidade: meses antigos tinham só o total)
+    const det = _mesAtivo.vendas_detalhe || {};
+    const temDetalhe = VENDAS_TIPOS.some(t => det[t]);
+    VENDAS_TIPOS.forEach(t => { document.getElementById('cv-'+t).value = det[t] || ''; });
+    if (!temDetalhe && _mesAtivo.vendas_mes) {
+      // mês antigo: joga o total em "outros" para não perder o dado
+      document.getElementById('cv-outro').value = _mesAtivo.vendas_mes;
+    }
     CustosFixos.recalcular();
   },
+  vendasDetalhe() {
+    const d = {};
+    VENDAS_TIPOS.forEach(t => { d[t] = parseInt(document.getElementById('cv-'+t).value, 10) || 0; });
+    return d;
+  },
+  totalVendas() {
+    const d = CustosFixos.vendasDetalhe();
+    return VENDAS_TIPOS.reduce((s,t)=>s+d[t], 0);
+  },
   coletar() {
-    const o = { vendas_mes: parseFloat(document.getElementById('cf-vendas').value) || 0 };
+    const o = { vendas_detalhe: CustosFixos.vendasDetalhe() };
     CAMPOS_CF.forEach(c => { o[c] = parseFloat(document.getElementById('cf-'+c).value) || 0; });
     return o;
   },
   recalcular() {
-    const d = CustosFixos.coletar();
-    const total = CAMPOS_CF.reduce((s,c)=>s+d[c],0);
-    const porProd = d.vendas_mes>0 ? total/d.vendas_mes : 0;
+    const total = CAMPOS_CF.reduce((s,c)=>s+(parseFloat(document.getElementById('cf-'+c).value)||0),0);
+    const vendas = CustosFixos.totalVendas();
+    const porProd = vendas>0 ? total/vendas : 0;
+    document.getElementById('vendas-total').textContent = vendas.toLocaleString('pt-BR');
     document.getElementById('rateio-total').textContent = Fmt.moeda(total);
+    document.getElementById('rateio-vendas').textContent = vendas.toLocaleString('pt-BR');
     document.getElementById('rateio-por-produto').textContent = Fmt.moeda(porProd);
     const expl = document.getElementById('rateio-explicacao');
-    if (total>0 && d.vendas_mes>0) expl.textContent = `Cada produto precisa cobrir ${Fmt.moeda(porProd)} de custo fixo, além dos ingredientes.`;
-    else if (total>0) expl.textContent = 'Informe o volume de vendas do mês para calcular o rateio.';
-    else expl.textContent = 'Preencha os custos e o volume de vendas.';
+    if (total>0 && vendas>0) expl.textContent = `Cada produto precisa cobrir ${Fmt.moeda(porProd)} de custo fixo, além dos ingredientes.`;
+    else if (total>0) expl.textContent = 'Informe as vendas do mês (quantidade) para calcular o rateio.';
+    else expl.textContent = 'Preencha os custos e as vendas do mês.';
   },
   abrirNovoMes() {
     document.getElementById('form-mes').reset();
@@ -686,7 +705,7 @@ const CustosFixos = {
     if (document.getElementById('mes-copiar').checked && _meses.length) {
       const base = _meses[0];
       CAMPOS_CF.forEach(c => body[c] = base[c] || 0);
-      body.vendas_mes = base.vendas_mes || 0;
+      body.vendas_detalhe = base.vendas_detalhe || {};
     }
     try {
       const res = await API.post('/custos-fixos', body);
@@ -717,8 +736,11 @@ const CustosFixos = {
     UI.toast('Mês excluído.', 'aviso');
   },
 };
-['vendas', ...CAMPOS_CF].forEach(c => {
+CAMPOS_CF.forEach(c => {
   document.getElementById('cf-'+c)?.addEventListener('input', () => CustosFixos.recalcular());
+});
+VENDAS_TIPOS.forEach(t => {
+  document.getElementById('cv-'+t)?.addEventListener('input', () => CustosFixos.recalcular());
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -805,16 +827,32 @@ function fmtQtd(valor, unidade) {
 }
 
 let _estoqueItens = [];
+let _estoquePanorama = null;
 
 const Estoque = {
   async carregar() {
     const data = await API.get('/estoque');
+    _estoquePanorama = data;
     _estoqueItens = data.itens;
 
+    // Botão de contagem muda de rótulo conforme o estágio
+    const btn = document.getElementById('btn-contagem');
+    if (btn) {
+      btn.disabled = !data.total_itens;
+      btn.style.opacity = data.total_itens ? '1' : '0.5';
+      btn.textContent = data.total_itens
+        ? (data.ja_fez_contagem ? '✅ Conferência de Fechamento' : '📋 Fazer Inventário Inicial')
+        : '📋 Contagem do Dia';
+    }
+
+    const precisaComprar = data.itens_abaixo_minimo + data.itens_zerados;
+    const ultima = data.ultima_contagem;
+    const ultimaTxt = ultima ? Fmt.data(ultima.data) : '—';
     document.getElementById('estoque-resumo').innerHTML = `
       <div class="resumo-card"><div class="valor">${Fmt.moeda(data.valor_total_estoque)}</div><div class="label">Valor Parado em Estoque</div></div>
-      <div class="resumo-card"><div class="valor">${data.total_itens}</div><div class="label">Itens Cadastrados</div></div>
-      <div class="resumo-card"><div class="valor" style="color:${(data.itens_abaixo_minimo+data.itens_zerados)?'var(--red)':'var(--green)'}">${data.itens_abaixo_minimo + data.itens_zerados}</div><div class="label">Precisa Comprar</div></div>`;
+      <div class="resumo-card"><div class="valor">${data.total_itens}</div><div class="label">Itens no Estoque</div></div>
+      <div class="resumo-card"><div class="valor" style="color:${precisaComprar?'var(--red)':'var(--green)'}">${precisaComprar}</div><div class="label">Precisa Comprar</div></div>
+      <div class="resumo-card"><div class="valor" style="font-size:1.05rem">${ultimaTxt}</div><div class="label">Última Contagem</div></div>`;
 
     // Lista de compras
     const bloco = document.getElementById('estoque-compras-bloco');
@@ -841,7 +879,8 @@ const Estoque = {
     // Tabela completa
     const tbody = document.getElementById('lista-estoque');
     if (!_estoqueItens.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty">Nenhum ingrediente cadastrado. Cadastre na aba Ingredientes.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Nenhum ingrediente cadastrado. Cadastre os itens na aba <strong>Ingredientes</strong> (com preço) e eles aparecerão aqui.</td></tr>';
+      document.getElementById('estoque-historico').innerHTML = '';
       return;
     }
     tbody.innerHTML = _estoqueItens.map(i => {
@@ -854,13 +893,113 @@ const Estoque = {
         <td data-label="Valor Parado" style="text-align:right">${i.tem_preco ? Fmt.moeda(i.valor_estoque) : '<span class="badge-sem-preco">sem preço</span>'}</td>
         <td data-label="Situação" style="text-align:center">${badge}</td>
         <td class="cell-acoes" data-label="Ações"><div class="acoes-cell">
-          <button class="btn-confirm" onclick="Estoque.abrirMovimento('${i.id}','entrada')" title="Registrar entrada">＋ Entrada</button>
-          <button class="btn-danger" onclick="Estoque.abrirMovimento('${i.id}','saida')" title="Dar baixa">－ Baixa</button>
-          <button class="btn-edit" onclick="Estoque.abrirMovimento('${i.id}','ajuste')">Ajustar</button>
+          <button class="btn-confirm" onclick="Estoque.abrirMovimento('${i.id}','entrada')" title="Chegou mercadoria">＋ Entrada</button>
+          <button class="btn-danger" onclick="Estoque.abrirMovimento('${i.id}','saida')" title="Perda / quebra">－ Baixa</button>
           <button class="btn-edit" onclick="Estoque.abrirMinimo('${i.id}')">Mínimo</button>
         </div></td>
       </tr>`;
     }).join('');
+
+    Estoque.carregarHistorico();
+  },
+
+  // ── Histórico de contagens (consumo por dia) ──
+  async carregarHistorico() {
+    let contagens = [];
+    try { contagens = await API.get('/estoque/contagens'); } catch { return; }
+    const cont = document.getElementById('estoque-historico');
+    if (!contagens.length) { cont.innerHTML = ''; return; }
+    const linhas = contagens.slice(0, 12).map(c => {
+      const tipoTag = c.tipo === 'inicial'
+        ? '<span class="badge-estoque ok">Inventário inicial</span>'
+        : '<span class="badge-estoque" style="background:rgba(245,166,35,0.12);color:var(--accent);border:1px solid rgba(245,166,35,0.3)">Conferência</span>';
+      return `<tr>
+        <td data-label="Data">${Fmt.data(c.data)} ${tipoTag}</td>
+        <td data-label="Itens" style="text-align:right">${c.total_itens}</td>
+        <td data-label="Saiu do estoque" style="text-align:right;color:var(--red)">${c.valor_consumo>0?Fmt.moeda(c.valor_consumo):'—'}</td>
+        <td data-label="Valor contado" style="text-align:right">${Fmt.moeda(c.valor_contado)}</td>
+      </tr>`;
+    }).join('');
+    cont.innerHTML = `
+      <h3 style="font-size:0.95rem;font-weight:600;margin-bottom:12px">📅 Histórico de Contagens</h3>
+      <div class="card"><table>
+        <thead><tr>
+          <th>Data</th><th style="text-align:right">Itens</th>
+          <th style="text-align:right">Saiu do Estoque</th><th style="text-align:right">Valor Contado</th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+      </table></div>`;
+  },
+
+  // ── Contagem do dia (inventário inicial + conferência) ──
+  abrirContagem() {
+    if (!_estoqueItens.length) { UI.toast('Cadastre ingredientes primeiro na aba Ingredientes.', 'aviso'); return; }
+    const inicial = !_estoquePanorama?.ja_fez_contagem;
+    document.getElementById('modal-contagem-titulo').textContent =
+      inicial ? '📋 Inventário Inicial' : '✅ Conferência de Fechamento';
+    document.getElementById('contagem-saiu-label').textContent =
+      inicial ? 'Valor inicial' : 'Saiu do estoque';
+    document.getElementById('contagem-ajuda').innerHTML = inicial
+      ? 'Primeira contagem: digite <strong>quanto você tem hoje</strong> de cada item. Isso vira a base do seu estoque.'
+      : 'Fim do dia: digite <strong>quanto sobrou</strong> de cada item. O sistema calcula o que saiu (vendas + perdas).';
+
+    const semPreco = (_estoquePanorama?.sem_preco || []);
+    const aviso = semPreco.length
+      ? `<div class="contagem-aviso">⚠ ${semPreco.length} item(ns) sem preço não entram no valor. Registre o preço na aba Ingredientes para o estoque ficar exato.</div>`
+      : '';
+
+    document.getElementById('contagem-lista').innerHTML = aviso + _estoqueItens.map(i => `
+      <div class="contagem-item" data-id="${i.id}" data-unidade="${i.unidade_exibicao}" data-custo="${i.custo_base}" data-fator="${i.fator_exibicao}" data-sistema="${i.estoque_exibicao}">
+        <div class="contagem-item-nome">${i.nome}${i.tem_preco?'':' <span class="badge-sem-preco">sem preço</span>'}</div>
+        <div class="contagem-item-sistema">Sistema: ${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</div>
+        <div class="contagem-item-input">
+          <input type="number" step="0.001" min="0" value="${i.estoque_exibicao}" oninput="Estoque.recalcContagem()" />
+          <span class="contagem-item-un">${i.unidade_exibicao}</span>
+        </div>
+        <div class="contagem-item-diff" data-diff></div>
+      </div>`).join('');
+
+    Estoque.recalcContagem();
+    UI.abrirModal('modal-contagem');
+  },
+
+  recalcContagem() {
+    let valorContado = 0, valorSaiu = 0;
+    document.querySelectorAll('#contagem-lista .contagem-item').forEach(el => {
+      const custo = parseFloat(el.dataset.custo) || 0;          // por unidade base
+      const fator = parseFloat(el.dataset.fator) || 1;          // base por unidade exibida
+      const sistema = parseFloat(el.dataset.sistema) || 0;      // em unidade exibida
+      const contado = parseFloat(el.querySelector('input').value);
+      const diffEl = el.querySelector('[data-diff]');
+      if (!(contado >= 0)) { diffEl.textContent = ''; return; }
+      valorContado += contado * fator * custo;
+      const dif = sistema - contado; // positivo = saiu
+      if (Math.abs(dif) < 0.0005) { diffEl.innerHTML = '<span class="dif-ok">✓ confere</span>'; }
+      else if (dif > 0) { valorSaiu += dif * fator * custo; diffEl.innerHTML = `<span class="dif-saiu">saiu ${dif.toLocaleString('pt-BR',{maximumFractionDigits:3})} ${el.dataset.unidade}</span>`; }
+      else { diffEl.innerHTML = `<span class="dif-entrou">+${(-dif).toLocaleString('pt-BR',{maximumFractionDigits:3})} ${el.dataset.unidade}</span>`; }
+    });
+    document.getElementById('contagem-valor').textContent = Fmt.moeda(valorContado);
+    document.getElementById('contagem-saiu').textContent = Fmt.moeda(valorSaiu);
+  },
+
+  async salvarContagem() {
+    const itens = [...document.querySelectorAll('#contagem-lista .contagem-item')].map(el => ({
+      ingrediente_id: el.dataset.id,
+      contado: parseFloat(el.querySelector('input').value),
+      unidade: el.dataset.unidade,
+    })).filter(x => x.contado >= 0);
+    if (!itens.length) { UI.toast('Preencha as quantidades.', 'erro'); return; }
+    const btn = document.getElementById('contagem-salvar');
+    btn.disabled = true;
+    try {
+      const res = await API.post('/estoque/contagem', { itens });
+      UI.fecharModal('modal-contagem');
+      await Estoque.carregar();
+      const c = res.contagem;
+      if (c.valor_consumo > 0) UI.toast(`${res.mensagem} Saiu ${Fmt.moeda(c.valor_consumo)} do estoque.`, 'aviso');
+      else UI.toast(res.mensagem);
+    } catch (err) { UI.toast(err.erro || 'Erro ao salvar contagem.', 'erro'); }
+    finally { btn.disabled = false; }
   },
 
   abrirMovimento(id, tipo = 'entrada') {
