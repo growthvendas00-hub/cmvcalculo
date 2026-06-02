@@ -49,6 +49,7 @@ const FORNECEDORES_FILE  = path.join(DATA_DIR, 'fornecedores.json');
 const MOVIMENTOS_FILE    = path.join(DATA_DIR, 'movimentos_estoque.json');
 const CONTAGENS_FILE     = path.join(DATA_DIR, 'contagens.json');
 const CAIXA_FILE         = path.join(DATA_DIR, 'caixa.json');
+const WHATS_LOG_FILE     = path.join(DATA_DIR, 'whatsapp_log.json');
 
 // Nome da coleção a partir do caminho do arquivo (ex.: .../caixa.json → caixa)
 function chaveDe(caminho) { return path.basename(caminho, '.json'); }
@@ -265,6 +266,19 @@ function deletarLancamento(id) {
   salvarJSON(CAIXA_FILE, { lancamentos: listarLancamentos().filter(l => l.id !== id) });
 }
 
+// ─── Log de mensagens do WhatsApp ─────────────────────────────────────────────
+
+function listarWhatsappLog() {
+  const lista = lerJSON(WHATS_LOG_FILE, []);
+  return Array.isArray(lista) ? lista : [];
+}
+
+function salvarWhatsappLog(entrada) {
+  const lista = listarWhatsappLog();
+  lista.unshift(entrada);              // mais recente primeiro
+  salvarJSON(WHATS_LOG_FILE, lista.slice(0, 200)); // mantém os últimos 200
+}
+
 module.exports = {
   KV_ATIVO,
   kvHydrate,
@@ -284,6 +298,8 @@ module.exports = {
   buscarLancamentoPorId,
   salvarLancamento,
   deletarLancamento,
+  listarWhatsappLog,
+  salvarWhatsappLog,
   listarFichas,
   buscarFichaPorId,
   salvarFicha,

@@ -5,17 +5,8 @@
     "unidade_base": "g",
     "custo_base": 0.024,
     "unidade_compra": "kg",
-    "historico": [
-      {
-        "data": "2026-06-02T12:39:10.238Z",
-        "fornecedor": "Santa rita",
-        "unidade_compra": "kg",
-        "quantidade_comprada": 5,
-        "valor_total": 120,
-        "custo_base": 0.024
-      }
-    ],
-    "ultima_atualizacao": "2026-06-02T19:43:20.536Z",
+    "historico": [],
+    "ultima_atualizacao": "2026-06-02T22:15:21.708Z",
     "estoque_atual": 0
   }
 ]

@@ -3,7 +3,10 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(express.json());
+// Captura o corpo cru (necessário para validar a assinatura HMAC do WhatsApp)
+app.use(express.json({
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 const storage = require('./core/storage');
@@ -31,6 +34,9 @@ if (storage.KV_ATIVO) {
 
 const routes = require('./api/routes');
 app.use('/api', routes);
+
+// Webhook do WhatsApp (fica sob /api para herdar o carregamento do banco KV)
+app.use('/api/webhook', require('./api/webhook'));
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));

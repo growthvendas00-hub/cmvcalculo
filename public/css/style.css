@@ -1030,6 +1030,57 @@ form { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
 .vendas-total-box span { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
 .vendas-total-box strong { font-size: 1.5rem; color: var(--accent); }
 
+/* ─── Bloco WhatsApp (simulador + log) ────────────────────────── */
+.wa-bloco {
+  margin-top: 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid #25d366;
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.wa-cabecalho { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.wa-titulo { font-weight: 700; font-size: 1rem; }
+.wa-sim { display: flex; gap: 10px; }
+.wa-sim input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 11px 14px;
+  border-radius: 8px;
+  font-size: 0.92rem;
+}
+.wa-sim input:focus { outline: none; border-color: #25d366; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
+.wa-resposta {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+.wa-resposta.ok { border-color: rgba(37,211,102,0.4); }
+.wa-resposta.falha { border-color: rgba(231,76,60,0.4); color: var(--text); }
+.wa-resposta.carregando { color: var(--text-muted); font-style: italic; }
+.wa-log { margin-top: 16px; }
+.wa-log-titulo { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }
+.wa-vazio { color: var(--text-muted); font-size: 0.85rem; font-style: italic; }
+.wa-log-item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--green);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.wa-log-item.falha { border-left-color: var(--red); }
+.wa-log-topo { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--text-muted); margin-bottom: 4px; }
+.wa-log-texto { font-size: 0.88rem; font-weight: 600; }
+.wa-log-resp { font-size: 0.8rem; color: var(--text-muted); margin-top: 3px; }
+
 /* ─── Refinamentos de interação (UI/UX v4) ────────────────────── */
 .btn-primary, .btn-secondary, .btn-confirm {
   transition: transform 0.12s ease, opacity 0.15s, background 0.15s, box-shadow 0.15s;
@@ -1153,6 +1204,9 @@ tbody tr { transition: background 0.14s; }
   .contagem-totais { justify-content: space-between; }
   .contagem-rodape > div:last-child { display: flex; gap: 10px; }
   .contagem-rodape > div:last-child button { flex: 1; }
+
+  .wa-sim { flex-direction: column; }
+  .wa-sim button { width: 100%; }
 }
 
 @media (max-width: 420px) {

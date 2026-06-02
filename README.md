@@ -45,3 +45,43 @@ A Vercel é *serverless*: o disco é temporário, então o sistema usa um banco
 - Não achou → grava em **arquivos** na pasta `data/` (uso local).
 
 Veja `.env.example` para referência das variáveis.
+
+---
+
+## 📲 Lançar pelo WhatsApp
+
+Você manda uma mensagem e o sistema registra sozinho no caixa/estoque e responde
+confirmando. Funciona pela **WhatsApp Cloud API (Meta)** — oficial e grátis.
+
+### Comandos
+| Você manda | O que acontece |
+|---|---|
+| `entrou 1850 vendas` | Entrada no caixa de R$ 1.850 (Vendas) |
+| `saiu 600 fornecedor` | Saída no caixa de R$ 600 (Insumos) |
+| `comprei carne 5kg 120` | Registra preço + entrada de 5 kg no estoque |
+| `entrou carne 5kg` | Entrada de 5 kg no estoque (chegou mercadoria) |
+| `baixa carne 2kg quebra` | Baixa de 2 kg (perda) |
+| `contei carne 5kg` | Contagem: ajusta o estoque para 5 kg |
+| `caixa` | Responde o resultado do dia |
+| `estoque` | Responde valor parado + o que comprar |
+| `ajuda` | Lista os comandos |
+
+> O item precisa estar cadastrado em **Ingredientes** (com preço) para os comandos de estoque.
+> Você pode testar tudo sem a Meta no **simulador** dentro da aba **Caixa Diário**.
+
+### Configurar na Meta (uma vez)
+1. Crie um app em **developers.facebook.com** → produto **WhatsApp**.
+2. Pegue o **Token de acesso** e o **Phone Number ID** (a Meta dá um número de teste grátis).
+3. Em **Configuration → Webhook**, aponte para:
+   `https://SEU-PROJETO.vercel.app/api/webhook/whatsapp`
+   e use o **Verify Token** igual ao `WHATSAPP_VERIFY_TOKEN`.
+4. Assine o campo **messages**.
+5. Na Vercel, defina as variáveis (Settings → Environment Variables):
+   - `WHATSAPP_VERIFY_TOKEN` (o mesmo do passo 3)
+   - `WHATSAPP_TOKEN` (token de acesso da Meta)
+   - `WHATSAPP_APP_SECRET` (em Configurações básicas do app — recomendado)
+   - `WHATSAPP_ALLOWED` (seu número com DDI, ex.: `5511999999999`)
+6. **Redeploy**. Mande "ajuda" para o número e pronto.
+
+Sem `WHATSAPP_TOKEN` o sistema ainda entende as mensagens e registra, mas não
+consegue responder no WhatsApp (útil só para teste).

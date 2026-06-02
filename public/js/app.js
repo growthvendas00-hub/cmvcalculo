@@ -1174,6 +1174,48 @@ const Caixa = {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// MÓDULO — WHATSAPP (simulador + log)
+// ═══════════════════════════════════════════════════════════════
+const Whats = {
+  async simular() {
+    const inp = document.getElementById('wa-input');
+    const texto = inp.value.trim();
+    if (!texto) return;
+    const box = document.getElementById('wa-resposta');
+    box.style.display = 'block';
+    box.className = 'wa-resposta carregando';
+    box.textContent = 'Processando…';
+    try {
+      const r = await API.post('/webhook/whatsapp/test', { texto });
+      box.className = 'wa-resposta ' + (r.sucesso ? 'ok' : 'falha');
+      box.textContent = r.reply;
+      inp.value = '';
+      // recarrega dados que podem ter mudado + o log
+      await Promise.all([Caixa.carregar(_caixaMesAtivo), Whats.carregarLog()]);
+    } catch (err) {
+      box.className = 'wa-resposta falha';
+      box.textContent = err.erro || 'Erro ao processar.';
+    }
+  },
+  async carregarLog() {
+    let log = [];
+    try { log = await API.get('/webhook/whatsapp/log'); } catch { return; }
+    const cont = document.getElementById('wa-log');
+    if (!cont) return;
+    if (!log.length) { cont.innerHTML = '<p class="wa-vazio">Nenhuma mensagem ainda. Teste acima ou mande no WhatsApp.</p>'; return; }
+    cont.innerHTML = '<div class="wa-log-titulo">Últimas mensagens</div>' + log.map(l => `
+      <div class="wa-log-item ${l.sucesso ? 'ok' : 'falha'}">
+        <div class="wa-log-topo">
+          <span class="wa-log-de">${l.de === 'simulador' ? '🧪 simulador' : '📱 ' + (l.de || '—')}</span>
+          <span class="wa-log-data">${Fmt.data(l.data)}</span>
+        </div>
+        <div class="wa-log-texto">"${(l.texto||'').replace(/</g,'&lt;')}"</div>
+        <div class="wa-log-resp">${(l.resposta||'').replace(/</g,'&lt;').split('\n')[0]}</div>
+      </div>`).join('');
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
 // NAVEGAÇÃO + INIT
 // ═══════════════════════════════════════════════════════════════
 document.querySelectorAll('.tab').forEach(btn => {
@@ -1188,7 +1230,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (target === 'custos') CustosFixos.carregar();
     if (target === 'compras') Compras.carregar();
     if (target === 'estoque') Estoque.carregar();
-    if (target === 'caixa') Caixa.carregar();
+    if (target === 'caixa') { Caixa.carregar(); Whats.carregarLog(); }
   });
 });
 document.querySelectorAll('.modal').forEach(m => {

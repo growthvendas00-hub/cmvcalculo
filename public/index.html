@@ -268,6 +268,34 @@
 
   <div id="caixa-resumo" class="relatorio-resumo"></div>
   <div id="caixa-dias"></div>
+
+  <!-- WhatsApp: simulador + log -->
+  <div class="wa-bloco">
+    <div class="wa-cabecalho">
+      <div class="wa-titulo">📲 Lançar pelo WhatsApp</div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-wa')" id="wa-toggle-btn">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-box" id="tutorial-wa" style="margin:0 0 14px">
+      <div class="tutorial-corpo collapsed" style="padding:0">
+        <div class="tutorial-bloco">
+          <span class="tutorial-label">COMO FUNCIONA</span>
+          <p>Mande uma mensagem no WhatsApp e o sistema registra sozinho aqui. Teste abaixo escrevendo do mesmo jeito que mandaria — a resposta é igual à que você receberia no Whats.</p>
+        </div>
+        <div class="tutorial-bloco tutorial-info">
+          <span class="tutorial-label">EXEMPLOS</span>
+          <p><strong>entrou 1850 vendas</strong> · <strong>saiu 600 fornecedor</strong> · <strong>comprei carne 5kg 120</strong> · <strong>baixa carne 2kg quebra</strong> · <strong>contei carne 5kg</strong> · <strong>caixa</strong> · <strong>estoque</strong></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="wa-sim">
+      <input id="wa-input" type="text" placeholder='Ex: entrou 1850 vendas' onkeydown="if(event.key==='Enter')Whats.simular()" />
+      <button class="btn-primary" onclick="Whats.simular()">Enviar</button>
+    </div>
+    <div id="wa-resposta" class="wa-resposta" style="display:none"></div>
+
+    <div id="wa-log" class="wa-log"></div>
+  </div>
 </section>
 
 <!-- ══════════════════════ MÓDULO 4 — CUSTOS FIXOS ══════════════════════ -->
