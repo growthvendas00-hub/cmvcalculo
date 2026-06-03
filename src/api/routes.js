@@ -42,32 +42,57 @@ router.post('/ingredientes/pendente', (req, res) => {
   res.status(201).json({ ingrediente, mensagem: 'Ingrediente criado (sem preço). Registre uma compra para definir o custo.' });
 });
 
-// Registra COMPRA (define/atualiza preço). Aceita ingrediente novo ou existente.
+// Registra COMPRA (define/atualiza preço). Dois modos:
+//  • medida:    { unidade_compra, quantidade_comprada }  (kg/g/L/ml/un)
+//  • embalagem: { modo:'embalagem', embalagem_nome, quantidade_embalagens,
+//                 conteudo, unidade_conteudo }  (ex.: 6 latas de 340 g)
 router.post('/ingredientes', (req, res) => {
-  const { id, nome, unidade_compra, quantidade_comprada, valor_total, fornecedor } = req.body;
-
-  if (!unidade_compra || !units.existeUnidade(unidade_compra)) {
-    return res.status(400).json({ erro: 'Unidade de compra inválida (use kg, g, L, ml ou un).' });
-  }
-  const qtd = parseFloat(quantidade_comprada);
-  const valor = parseFloat(valor_total);
-  if (!(qtd > 0) || !(valor > 0)) {
-    return res.status(400).json({ erro: 'Quantidade comprada e valor pago devem ser maiores que zero.' });
-  }
-
-  const custo_base = cmvCore.calcularCustoBase(valor, qtd, unidade_compra);
-  const unidade_base = units.unidadeBase(unidade_compra);
+  const { id, nome, fornecedor } = req.body;
   const fornecedorLimpo = (fornecedor || '').trim();
-  if (fornecedorLimpo) storage.registrarFornecedor(fornecedorLimpo);
 
-  const registro = {
-    data: new Date().toISOString(),
-    fornecedor: fornecedorLimpo || null,
-    unidade_compra,
-    quantidade_comprada: qtd,
-    valor_total: valor,
-    custo_base,
-  };
+  const valor = parseFloat(req.body.valor_total);
+  if (!(valor > 0)) return res.status(400).json({ erro: 'O valor pago deve ser maior que zero.' });
+
+  const modoEmbalagem = req.body.modo === 'embalagem' || req.body.conteudo !== undefined;
+
+  let custo_base, unidade_base, embalagem = null, registro, mov;
+
+  if (modoEmbalagem) {
+    const nomeEmb = (req.body.embalagem_nome || 'embalagem').trim() || 'embalagem';
+    const qtdEmb = parseFloat(req.body.quantidade_embalagens);
+    const conteudo = parseFloat(req.body.conteudo);
+    const unConteudo = req.body.unidade_conteudo;
+    if (!(qtdEmb > 0)) return res.status(400).json({ erro: 'Informe quantas embalagens você comprou.' });
+    if (!(conteudo > 0)) return res.status(400).json({ erro: 'Informe o conteúdo de cada embalagem (ex.: 340 g por lata).' });
+    if (!unConteudo || !units.existeUnidade(unConteudo)) return res.status(400).json({ erro: 'Unidade do conteúdo inválida.' });
+    unidade_base = units.unidadeBase(unConteudo);
+    const totalBase = qtdEmb * units.paraBase(conteudo, unConteudo);
+    custo_base = cmvCore.arredondar(valor / totalBase, 6);
+    embalagem = { nome: nomeEmb, conteudo, unidade: unConteudo };
+    registro = {
+      data: new Date().toISOString(), fornecedor: fornecedorLimpo || null,
+      modo: 'embalagem', embalagem, quantidade_embalagens: qtdEmb,
+      quantidade_comprada: qtdEmb, unidade_compra: nomeEmb,
+      valor_total: valor, custo_base,
+    };
+    mov = { quantidade: qtdEmb, unidade: 'emb' };
+  } else {
+    const unidade_compra = req.body.unidade_compra;
+    if (!unidade_compra || !units.existeUnidade(unidade_compra)) {
+      return res.status(400).json({ erro: 'Unidade de compra inválida (use kg, g, L, ml ou un).' });
+    }
+    const qtd = parseFloat(req.body.quantidade_comprada);
+    if (!(qtd > 0)) return res.status(400).json({ erro: 'Quantidade comprada deve ser maior que zero.' });
+    custo_base = cmvCore.calcularCustoBase(valor, qtd, unidade_compra);
+    unidade_base = units.unidadeBase(unidade_compra);
+    registro = {
+      data: new Date().toISOString(), fornecedor: fornecedorLimpo || null,
+      unidade_compra, quantidade_comprada: qtd, valor_total: valor, custo_base,
+    };
+    mov = { quantidade: qtd, unidade: unidade_compra };
+  }
+
+  if (fornecedorLimpo) storage.registrarFornecedor(fornecedorLimpo);
 
   // Localiza por id (preferencial) ou por nome
   let existente = id ? storage.buscarIngredientePorId(id) : null;
@@ -78,15 +103,20 @@ router.post('/ingredientes', (req, res) => {
 
   if (existente) {
     precoAlterado = existente.custo_base !== custo_base;
+    // Em modo embalagem a base segue o conteúdo; em medida, preserva a base atual.
+    const baseFinal = modoEmbalagem ? unidade_base : (existente.unidade_base || unidade_base);
+    const baseMudou = existente.unidade_base && existente.unidade_base !== baseFinal;
     ingrediente = {
       ...existente,
-      // não muda a unidade base de um ingrediente já usado em fichas; mantém a dimensão
-      unidade_base: existente.unidade_base || unidade_base,
+      unidade_base: baseFinal,
       custo_base,
-      unidade_compra,
+      unidade_compra: registro.unidade_compra,
+      embalagem: embalagem || existente.embalagem || null,
       historico: [...(existente.historico || []), registro],
       ultima_atualizacao: new Date().toISOString(),
     };
+    // Se a unidade de USO mudou (ex.: 'un' → 'g'), o estoque antigo perde o sentido.
+    if (baseMudou) ingrediente.estoque_atual = 0;
   } else {
     if (!nome) return res.status(400).json({ erro: 'Informe o nome do ingrediente.' });
     ingrediente = {
@@ -94,7 +124,8 @@ router.post('/ingredientes', (req, res) => {
       nome: nome.trim(),
       unidade_base,
       custo_base,
-      unidade_compra,
+      unidade_compra: registro.unidade_compra,
+      embalagem,
       historico: [registro],
       ultima_atualizacao: new Date().toISOString(),
     };
@@ -106,14 +137,13 @@ router.post('/ingredientes', (req, res) => {
   const fichas_atualizadas = precoAlterado ? cmvCore.propagarPreco(ingrediente.id) : [];
 
   // Entrada automática no estoque (toda compra que chega aumenta o estoque).
-  // Pode ser desativada enviando lancar_estoque: false (ex.: só corrigir preço).
   let entrada_estoque = null;
   if (req.body.lancar_estoque !== false) {
     const r = estoqueCore.aplicarMovimento({
       ingrediente_id: ingrediente.id,
       tipo: 'entrada',
-      quantidade: qtd,
-      unidade: unidade_compra,
+      quantidade: mov.quantidade,
+      unidade: mov.unidade,
       motivo: fornecedorLimpo ? `Compra — ${fornecedorLimpo}` : 'Compra registrada',
     });
     if (!r.erro) { entrada_estoque = r.movimento; ingrediente = r.ingrediente; }
@@ -137,7 +167,7 @@ router.put('/ingredientes/:id', (req, res) => {
   const ing = storage.buscarIngredientePorId(req.params.id);
   if (!ing) return res.status(404).json({ erro: 'Ingrediente não encontrado.' });
 
-  const { nome, unidade_base } = req.body;
+  const { nome, unidade_base, embalagem } = req.body;
   if (nome) {
     const outro = storage.buscarIngredientePorNome(nome);
     if (outro && outro.id !== ing.id) {
@@ -145,7 +175,24 @@ router.put('/ingredientes/:id', (req, res) => {
     }
     ing.nome = nome.trim();
   }
-  if (unidade_base && units.existeUnidade(unidade_base)) ing.unidade_base = unidade_base;
+  if (unidade_base && units.existeUnidade(unidade_base)) {
+    if (ing.unidade_base && ing.unidade_base !== unidade_base) ing.estoque_atual = 0; // mudou a unidade de uso
+    ing.unidade_base = unidade_base;
+  }
+  // Embalagem: objeto {nome,conteudo,unidade} para definir, ou null/false para remover
+  if (embalagem === null || embalagem === false) {
+    ing.embalagem = null;
+  } else if (embalagem && typeof embalagem === 'object') {
+    const conteudo = parseFloat(embalagem.conteudo);
+    const un = embalagem.unidade;
+    if (!(conteudo > 0) || !units.existeUnidade(un)) {
+      return res.status(400).json({ erro: 'Embalagem inválida: informe o conteúdo e a unidade (ex.: 340 g por lata).' });
+    }
+    if (units.unidadeBase(un) !== ing.unidade_base) {
+      return res.status(400).json({ erro: `O conteúdo da embalagem deve ser em ${ing.unidade_base} (a unidade de uso do item).` });
+    }
+    ing.embalagem = { nome: (embalagem.nome || 'embalagem').trim() || 'embalagem', conteudo, unidade: un };
+  }
   ing.ultima_atualizacao = new Date().toISOString();
   storage.salvarIngrediente(ing);
   res.json({ ingrediente: ing, mensagem: 'Ingrediente atualizado.' });
@@ -478,10 +525,11 @@ router.put('/estoque/:id/minimo', (req, res) => {
   const qtd = parseFloat(req.body.minimo);
   if (!(qtd >= 0)) return res.status(400).json({ erro: 'Mínimo inválido.' });
   const un = req.body.unidade || ing.unidade_base;
-  if (!units.existeUnidade(un) || units.unidadeBase(un) !== ing.unidade_base) {
+  const convertido = units.converterParaBase(qtd, un, ing.unidade_base, ing.embalagem);
+  if (convertido === null) {
     return res.status(400).json({ erro: `Unidade incompatível com "${ing.nome}".` });
   }
-  ing.estoque_minimo = cmvCore.arredondar(units.paraBase(qtd, un), 3);
+  ing.estoque_minimo = cmvCore.arredondar(convertido, 3);
   ing.ultima_atualizacao = new Date().toISOString();
   storage.salvarIngrediente(ing);
   res.json({ ingrediente: ing, mensagem: 'Estoque mínimo atualizado.' });

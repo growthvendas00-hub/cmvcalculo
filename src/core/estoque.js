@@ -51,6 +51,10 @@ function visaoIngrediente(ing) {
   const exFator = units.UNIDADE_EXIBICAO[ing.unidade_base]?.fator || 1;
   const s = situacao(atual, minimo);
 
+  // Equivalente em embalagens (ex.: 2040 g / 340 = 6 latas)
+  const conteudoEmb = units.conteudoBaseEmbalagem(ing.embalagem);
+  const estoque_embalagem = conteudoEmb > 0 ? arredondar(atual / conteudoEmb, 2) : null;
+
   return {
     id: ing.id,
     nome: ing.nome,
@@ -67,6 +71,10 @@ function visaoIngrediente(ing) {
     valor_estoque,
     situacao: s.classe,
     situacao_rotulo: s.rotulo,
+    // embalagem (compra por pacote, uso por g/ml/un)
+    embalagem: ing.embalagem || null,
+    conteudo_embalagem_base: conteudoEmb || null,
+    estoque_embalagem,
   };
 }
 
@@ -83,13 +91,13 @@ function aplicarMovimento({ ingrediente_id, tipo, quantidade, unidade, motivo })
     return { erro: 'Informe uma quantidade válida.' };
   }
 
-  // Converte a quantidade informada para a unidade base
+  // Converte a quantidade informada para a unidade base (aceita embalagem)
   const un = unidade || ing.unidade_base;
-  if (!units.existeUnidade(un)) return { erro: 'Unidade inválida.' };
-  if (units.unidadeBase(un) !== ing.unidade_base) {
+  const convertido = units.converterParaBase(qtd, un, ing.unidade_base, ing.embalagem);
+  if (convertido === null) {
     return { erro: `Unidade incompatível: "${ing.nome}" é medido em ${ing.unidade_base}.` };
   }
-  const qtdBase = arredondar(units.paraBase(qtd, un), 3);
+  const qtdBase = arredondar(convertido, 3);
 
   const anterior = estoqueAtual(ing);
   let novo;
@@ -152,15 +160,15 @@ function registrarContagem({ itens, tipo, observacao }) {
     if (!ing) continue;
 
     const un = item.unidade || ing.unidade_base;
-    if (!units.existeUnidade(un) || units.unidadeBase(un) !== ing.unidade_base) {
-      return { erro: `Unidade incompatível com "${ing.nome}".` };
-    }
     const contadoNum = Number(item.contado);
     if (!(contadoNum >= 0)) {
       return { erro: `Quantidade inválida para "${ing.nome}".` };
     }
-
-    const contadoBase = arredondar(units.paraBase(contadoNum, un), 3);
+    const convertido = units.converterParaBase(contadoNum, un, ing.unidade_base, ing.embalagem);
+    if (convertido === null) {
+      return { erro: `Unidade incompatível com "${ing.nome}".` };
+    }
+    const contadoBase = arredondar(convertido, 3);
     const antes = estoqueAtual(ing);
     const diff = arredondar(antes - contadoBase, 3); // positivo = saiu
     const custo_base = Number(ing.custo_base) || 0;

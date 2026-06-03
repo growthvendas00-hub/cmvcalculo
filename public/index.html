@@ -541,25 +541,69 @@
         <datalist id="lista-fornecedores"></datalist>
       </div>
       <div class="form-group">
-        <label class="campo-com-dica">Como você comprou? *<span class="dica-icone" data-dica="A unidade da embalagem que você comprou. Comprou um pacote de 5kg? Escolha kg e digite 5. Comprou 1 litro de óleo? Escolha L e digite 1. O sistema converte sozinho para o custo por grama/ml/unidade.">?</span></label>
-        <select id="compra-unidade" required onchange="Ingredientes.atualizarPreviewCompra()">
-          <option value="kg">kg — quilograma</option>
-          <option value="g">g — grama</option>
-          <option value="L">L — litro</option>
-          <option value="ml">ml — mililitro</option>
-          <option value="un">un — unidade (peça)</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="campo-com-dica">Quantidade Comprada *<span class="dica-icone" data-dica="Quanto veio na compra, na unidade escolhida acima. Ex: comprou 5 kg → digite 5. Comprou 10 pães → digite 10.">?</span></label>
-          <input id="compra-quantidade" type="number" step="0.001" min="0.001" placeholder="Ex: 5" required oninput="Ingredientes.atualizarPreviewCompra()" />
-        </div>
-        <div class="form-group">
-          <label class="campo-com-dica">Valor Total Pago (R$) *<span class="dica-icone" data-dica="O valor TOTAL que você pagou por essa quantidade, igual à nota fiscal. Não divida nada — o sistema calcula o custo por unidade.">?</span></label>
-          <input id="compra-valor" type="number" step="0.01" min="0.01" placeholder="Ex: 234.50" required oninput="Ingredientes.atualizarPreviewCompra()" />
+        <label class="campo-com-dica">Como você compra este item? *<span class="dica-icone" data-dica="Por MEDIDA: você compra e usa na mesma grandeza (ex: 5 kg de carne, usa em g). Por EMBALAGEM: você compra um pacote/lata/caixa, mas usa por grama/ml (ex: lata de milho que tem 340 g, e no lanche vão 30 g).">?</span></label>
+        <div class="modo-compra-toggle">
+          <label class="modo-opt"><input type="radio" name="compra-modo" value="medida" checked onchange="Ingredientes.trocarModoCompra()"><span>Por medida<br><small>kg, g, L, ml, un</small></span></label>
+          <label class="modo-opt"><input type="radio" name="compra-modo" value="embalagem" onchange="Ingredientes.trocarModoCompra()"><span>Por embalagem<br><small>lata, caixa, pacote…</small></span></label>
         </div>
       </div>
+
+      <!-- MODO MEDIDA -->
+      <div id="compra-sec-medida">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Unidade *</label>
+            <select id="compra-unidade" onchange="Ingredientes.atualizarPreviewCompra()">
+              <option value="kg">kg — quilograma</option>
+              <option value="g">g — grama</option>
+              <option value="L">L — litro</option>
+              <option value="ml">ml — mililitro</option>
+              <option value="un">un — unidade (peça)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="campo-com-dica">Quantidade *<span class="dica-icone" data-dica="Quanto veio na compra, na unidade ao lado. Ex: comprou 5 kg → digite 5.">?</span></label>
+            <input id="compra-quantidade" type="number" step="0.001" min="0.001" placeholder="Ex: 5" oninput="Ingredientes.atualizarPreviewCompra()" />
+          </div>
+        </div>
+      </div>
+
+      <!-- MODO EMBALAGEM -->
+      <div id="compra-sec-embalagem" style="display:none">
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label class="campo-com-dica">Nome da embalagem<span class="dica-icone" data-dica="Como você chama o pacote que comprou: lata, caixa, pacote, dúzia, fardo, balde…">?</span></label>
+            <input id="compra-emb-nome" type="text" placeholder="Ex: lata" oninput="Ingredientes.atualizarPreviewCompra()" />
+          </div>
+          <div class="form-group">
+            <label class="campo-com-dica">Quantas? *<span class="dica-icone" data-dica="Quantas embalagens você comprou. Ex: 6 latas → 6.">?</span></label>
+            <input id="compra-emb-qtd" type="number" step="0.01" min="0.01" placeholder="Ex: 6" oninput="Ingredientes.atualizarPreviewCompra()" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="campo-com-dica">Conteúdo de cada uma *<span class="dica-icone" data-dica="Quanto vem DENTRO de 1 embalagem, na unidade que você USA na receita. Ex: 1 lata de milho tem 340 g → digite 340 e escolha g.">?</span></label>
+            <input id="compra-emb-conteudo" type="number" step="0.001" min="0.001" placeholder="Ex: 340" oninput="Ingredientes.atualizarPreviewCompra()" />
+          </div>
+          <div class="form-group">
+            <label>Unidade do conteúdo *</label>
+            <select id="compra-emb-unidade" onchange="Ingredientes.atualizarPreviewCompra()">
+              <option value="g">g — grama</option>
+              <option value="kg">kg — quilograma</option>
+              <option value="ml">ml — mililitro</option>
+              <option value="L">L — litro</option>
+              <option value="un">un — unidade</option>
+            </select>
+          </div>
+        </div>
+        <small class="campo-hint">Assim você compra por <strong>lata/caixa</strong> mas usa por <strong>g/ml</strong> na ficha — o custo sai certinho.</small>
+      </div>
+
+      <div class="form-group">
+        <label class="campo-com-dica">Valor Total Pago (R$) *<span class="dica-icone" data-dica="O valor TOTAL que você pagou, igual à nota fiscal. Não divida nada — o sistema calcula o custo por unidade.">?</span></label>
+        <input id="compra-valor" type="number" step="0.01" min="0.01" placeholder="Ex: 234.50" required oninput="Ingredientes.atualizarPreviewCompra()" />
+      </div>
+
       <div class="custo-preview" id="compra-preview" style="display:none">
         Custo calculado: <strong id="compra-preview-valor">—</strong>
         <span class="custo-preview-alerta" id="compra-preview-alerta" style="display:none"></span>
@@ -586,13 +630,39 @@
         <input id="editar-ing-nome" type="text" required />
       </div>
       <div class="form-group">
-        <label class="campo-com-dica">Unidade de Medida na Receita<span class="dica-icone" data-dica="Como você vai pesar esse item ao montar o produto. Massa → g, líquidos → ml, peças → un. Mudar isso pode afetar fichas existentes.">?</span></label>
-        <select id="editar-ing-unidade">
+        <label class="campo-com-dica">Unidade de USO (na receita)<span class="dica-icone" data-dica="Como você mede ao montar o produto. Massa → g, líquidos → ml, peças → un. É a unidade que aparece na ficha técnica.">?</span></label>
+        <select id="editar-ing-unidade" onchange="Ingredientes.editAtualizarEmb()">
           <option value="g">g — grama (massa)</option>
           <option value="ml">ml — mililitro (volume)</option>
           <option value="un">un — unidade (peça)</option>
         </select>
       </div>
+
+      <div class="embalagem-bloco">
+        <label class="toggle-label" style="text-transform:none">
+          <input type="checkbox" id="editar-ing-tem-emb" onchange="Ingredientes.editToggleEmb()" />
+          <span>Eu compro este item por embalagem (lata, caixa, pacote…)</span>
+          <span class="dica-icone" data-dica="Use quando compra um pacote mas usa por g/ml. Ex: lata de milho de 340 g — você compra latas e usa 30 g por lanche.">?</span>
+        </label>
+        <div id="editar-ing-emb-campos" style="display:none">
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label>Nome da embalagem</label>
+              <input id="editar-emb-nome" type="text" placeholder="Ex: lata" />
+            </div>
+            <div class="form-group">
+              <label>Conteúdo de cada</label>
+              <input id="editar-emb-conteudo" type="number" step="0.001" min="0.001" placeholder="Ex: 340" />
+            </div>
+            <div class="form-group">
+              <label>Unidade</label>
+              <select id="editar-emb-unidade"></select>
+            </div>
+          </div>
+          <small class="campo-hint" id="editar-emb-hint"></small>
+        </div>
+      </div>
+
       <div class="modal-actions">
         <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-editar-ing')">Cancelar</button>
         <button type="submit" class="btn-primary">Salvar</button>

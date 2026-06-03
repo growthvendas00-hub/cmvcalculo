@@ -13,6 +13,7 @@ const UNIDADES = {
 const EXIBICAO = { g: { un: 'kg', fator: 1000 }, ml: { un: 'L', fator: 1000 }, un: { un: 'un', fator: 1 } };
 const UNIDADES_POR_BASE = { g: ['kg', 'g'], ml: ['L', 'ml'], un: ['un'] };
 function paraBase(qtd, unidade) { return qtd * (UNIDADES[unidade]?.fator || 1); }
+function conteudoBaseEmb(emb) { return emb ? (Number(emb.conteudo) || 0) * (UNIDADES[emb.unidade]?.fator || 0) : 0; }
 
 // ═══════════════════════════════════════════════════════════════
 // LISTA PADRÃO — apenas nomes + unidade base + lembrete (SEM preço)
@@ -220,8 +221,10 @@ const Ingredientes = {
         : `<span class="badge-sem-preco">⚠ Sem preço</span>`;
       const ultima = ing.historico?.length ? Fmt.data(ing.historico[ing.historico.length-1].data) : '—';
       const nomeJS = ing.nome.replace(/'/g, "\\'");
+      const embTag = ing.embalagem
+        ? `<span class="emb-tag" title="Comprado por embalagem">📦 ${ing.embalagem.nome} = ${ing.embalagem.conteudo} ${ing.embalagem.unidade}</span>` : '';
       return `<tr>
-        <td data-label="Ingrediente"><strong>${ing.nome}</strong> <small style="color:var(--text-muted)">(${ing.unidade_base})</small></td>
+        <td data-label="Ingrediente"><strong>${ing.nome}</strong> <small style="color:var(--text-muted)">(usa em ${ing.unidade_base})</small> ${embTag}</td>
         <td data-label="Custo Atual">${custo}</td>
         <td data-label="Última Compra" style="color:var(--text-muted)">${ultima}</td>
         <td class="cell-acoes" data-label="Ações"><div class="acoes-cell">
@@ -241,13 +244,26 @@ const Ingredientes = {
     } catch {}
   },
 
+  _setModo(modo) {
+    document.querySelector(`input[name="compra-modo"][value="${modo}"]`).checked = true;
+    Ingredientes.trocarModoCompra();
+  },
+  trocarModoCompra() {
+    const modo = document.querySelector('input[name="compra-modo"]:checked').value;
+    document.getElementById('compra-sec-medida').style.display = modo === 'medida' ? 'block' : 'none';
+    document.getElementById('compra-sec-embalagem').style.display = modo === 'embalagem' ? 'block' : 'none';
+    Ingredientes.atualizarPreviewCompra();
+  },
+
   abrirNovo() {
     document.getElementById('form-compra').reset();
     document.getElementById('compra-id').value = '';
     document.getElementById('modal-compra-titulo').textContent = 'Novo Ingrediente (com preço)';
     const nome = document.getElementById('compra-nome');
     nome.readOnly = false; nome.value = '';
-    Ingredientes._montarUnidades(['kg','g','L','ml','un'], 'kg');
+    document.getElementById('compra-unidade').value = 'kg';
+    document.getElementById('compra-emb-unidade').value = 'g';
+    Ingredientes._setModo('medida');
     Ingredientes._carregarFornecedores();
     document.getElementById('compra-preview').style.display = 'none';
     UI.abrirModal('modal-compra');
@@ -261,54 +277,81 @@ const Ingredientes = {
     document.getElementById('modal-compra-titulo').textContent = `Registrar Compra — ${ing.nome}`;
     const nome = document.getElementById('compra-nome');
     nome.value = ing.nome; nome.readOnly = true;
-    // restringe às unidades compatíveis com a unidade base do ingrediente
-    const compat = UNIDADES_POR_BASE[ing.unidade_base] || ['kg','g','L','ml','un'];
-    Ingredientes._montarUnidades(compat, compat[0]);
     Ingredientes._carregarFornecedores();
     document.getElementById('compra-preview').style.display = 'none';
+    if (ing.embalagem) {
+      // já compra por embalagem: pré-preenche e usa o modo embalagem
+      document.getElementById('compra-emb-nome').value = ing.embalagem.nome || '';
+      document.getElementById('compra-emb-conteudo').value = ing.embalagem.conteudo || '';
+      document.getElementById('compra-emb-unidade').value = ing.embalagem.unidade || 'g';
+      Ingredientes._setModo('embalagem');
+    } else {
+      const compat = UNIDADES_POR_BASE[ing.unidade_base] || ['kg','g','L','ml','un'];
+      document.getElementById('compra-unidade').value = compat[0];
+      document.getElementById('compra-emb-unidade').value = (UNIDADES_POR_BASE[ing.unidade_base]||['g'])[ (ing.unidade_base==='un'?0:1) ] || ing.unidade_base;
+      Ingredientes._setModo('medida');
+    }
     UI.abrirModal('modal-compra');
   },
 
-  _montarUnidades(lista, selecionada) {
-    const rotulos = { kg:'kg — quilograma', g:'g — grama', L:'L — litro', ml:'ml — mililitro', un:'un — unidade (peça)' };
-    const sel = document.getElementById('compra-unidade');
-    sel.innerHTML = lista.map(u => `<option value="${u}" ${u===selecionada?'selected':''}>${rotulos[u]}</option>`).join('');
-  },
-
   atualizarPreviewCompra() {
-    const qtd = parseFloat(document.getElementById('compra-quantidade').value);
+    const modo = document.querySelector('input[name="compra-modo"]:checked').value;
     const valor = parseFloat(document.getElementById('compra-valor').value);
-    const unidade = document.getElementById('compra-unidade').value;
     const prev = document.getElementById('compra-preview');
     const alerta = document.getElementById('compra-preview-alerta');
-    if (qtd > 0 && valor > 0) {
-      const qtdBase = paraBase(qtd, unidade);
-      const custoBase = valor / qtdBase;
-      const base = UNIDADES[unidade].base;
-      document.getElementById('compra-preview-valor').textContent = Fmt.custoUnit(custoBase, base);
+    alerta.style.display = 'none';
+    let custoBase = null, base = null, extra = '';
+
+    if (modo === 'medida') {
+      const qtd = parseFloat(document.getElementById('compra-quantidade').value);
+      const unidade = document.getElementById('compra-unidade').value;
+      if (qtd > 0 && valor > 0) { custoBase = valor / paraBase(qtd, unidade); base = UNIDADES[unidade].base; }
+    } else {
+      const qtdEmb = parseFloat(document.getElementById('compra-emb-qtd').value);
+      const conteudo = parseFloat(document.getElementById('compra-emb-conteudo').value);
+      const un = document.getElementById('compra-emb-unidade').value;
+      const nomeEmb = document.getElementById('compra-emb-nome').value.trim() || 'embalagem';
+      if (qtdEmb > 0 && conteudo > 0 && valor > 0) {
+        const totalBase = qtdEmb * paraBase(conteudo, un);
+        custoBase = valor / totalBase;
+        base = UNIDADES[un].base;
+        extra = ` · ${Fmt.moeda(valor / qtdEmb)}/${nomeEmb}`;
+      }
+    }
+    if (custoBase !== null && isFinite(custoBase)) {
+      document.getElementById('compra-preview-valor').textContent = Fmt.custoUnit(custoBase, base) + extra;
       prev.style.display = 'block';
-      // alerta de sanidade
       const exibido = custoBase * (EXIBICAO[base]?.fator || 1);
       if (base === 'g' && exibido > 300) {
-        alerta.textContent = '⚠ Custo muito alto para 1 kg. Confira a quantidade e a unidade.';
+        alerta.textContent = '⚠ Custo muito alto para 1 kg. Confira os valores.';
         alerta.style.display = 'block';
-      } else { alerta.style.display = 'none'; }
-    } else {
-      prev.style.display = 'none';
-    }
+      }
+    } else { prev.style.display = 'none'; }
   },
 
   async salvarCompra(e) {
     e.preventDefault();
     const id = document.getElementById('compra-id').value;
+    const modo = document.querySelector('input[name="compra-modo"]:checked').value;
     const body = {
       nome: document.getElementById('compra-nome').value,
       fornecedor: document.getElementById('compra-fornecedor').value,
-      unidade_compra: document.getElementById('compra-unidade').value,
-      quantidade_comprada: parseFloat(document.getElementById('compra-quantidade').value),
       valor_total: parseFloat(document.getElementById('compra-valor').value),
     };
     if (id) body.id = id;
+    if (modo === 'embalagem') {
+      body.modo = 'embalagem';
+      body.embalagem_nome = document.getElementById('compra-emb-nome').value.trim() || 'embalagem';
+      body.quantidade_embalagens = parseFloat(document.getElementById('compra-emb-qtd').value);
+      body.conteudo = parseFloat(document.getElementById('compra-emb-conteudo').value);
+      body.unidade_conteudo = document.getElementById('compra-emb-unidade').value;
+      if (!(body.quantidade_embalagens > 0) || !(body.conteudo > 0)) { UI.toast('Preencha quantas embalagens e o conteúdo de cada uma.', 'erro'); return; }
+    } else {
+      body.unidade_compra = document.getElementById('compra-unidade').value;
+      body.quantidade_comprada = parseFloat(document.getElementById('compra-quantidade').value);
+      if (!(body.quantidade_comprada > 0)) { UI.toast('Informe a quantidade comprada.', 'erro'); return; }
+    }
+    if (!(body.valor_total > 0)) { UI.toast('Informe o valor pago.', 'erro'); return; }
     try {
       const res = await API.post('/ingredientes', body);
       UI.fecharModal('modal-compra');
@@ -326,10 +369,34 @@ const Ingredientes = {
   editar(id) {
     const ing = _ingredientes.find(i => i.id === id);
     if (!ing) return;
+    document.getElementById('form-editar-ing').reset();
     document.getElementById('editar-ing-id').value = ing.id;
     document.getElementById('editar-ing-nome').value = ing.nome;
     document.getElementById('editar-ing-unidade').value = ing.unidade_base;
+    const tem = !!ing.embalagem;
+    document.getElementById('editar-ing-tem-emb').checked = tem;
+    if (tem) {
+      document.getElementById('editar-emb-nome').value = ing.embalagem.nome || '';
+      document.getElementById('editar-emb-conteudo').value = ing.embalagem.conteudo || '';
+    }
+    Ingredientes.editAtualizarEmb();
+    if (tem) document.getElementById('editar-emb-unidade').value = ing.embalagem.unidade;
+    Ingredientes.editToggleEmb();
     UI.abrirModal('modal-editar-ing');
+  },
+
+  editToggleEmb() {
+    const on = document.getElementById('editar-ing-tem-emb').checked;
+    document.getElementById('editar-ing-emb-campos').style.display = on ? 'block' : 'none';
+  },
+  // Atualiza as unidades válidas do conteúdo conforme a unidade de uso
+  editAtualizarEmb() {
+    const base = document.getElementById('editar-ing-unidade').value;
+    const compat = UNIDADES_POR_BASE[base] || [base];
+    const rot = { kg:'kg', g:'g', L:'L', ml:'ml', un:'un' };
+    document.getElementById('editar-emb-unidade').innerHTML = compat.map(u => `<option value="${u}">${rot[u]||u}</option>`).join('');
+    document.getElementById('editar-emb-hint').textContent =
+      `Ex.: 1 embalagem contém X ${base}. Você compra a embalagem e usa por ${base} na ficha.`;
   },
 
   async salvarEdicao(e) {
@@ -339,6 +406,17 @@ const Ingredientes = {
       nome: document.getElementById('editar-ing-nome').value,
       unidade_base: document.getElementById('editar-ing-unidade').value,
     };
+    if (document.getElementById('editar-ing-tem-emb').checked) {
+      const conteudo = parseFloat(document.getElementById('editar-emb-conteudo').value);
+      if (!(conteudo > 0)) { UI.toast('Informe o conteúdo da embalagem.', 'erro'); return; }
+      body.embalagem = {
+        nome: document.getElementById('editar-emb-nome').value.trim() || 'embalagem',
+        conteudo,
+        unidade: document.getElementById('editar-emb-unidade').value,
+      };
+    } else {
+      body.embalagem = null;
+    }
     try {
       await API.put('/ingredientes/' + id, body);
       UI.fecharModal('modal-editar-ing');
@@ -825,6 +903,20 @@ function opcoesUnidade(base, selecionada) {
   const sel = selecionada || lista[0];
   return lista.map(u => `<option value="${u}" ${u===sel?'selected':''}>${ROTULOS_UN[u]||u}</option>`).join('');
 }
+// Opções de unidade para um ingrediente, incluindo a embalagem ('emb') quando houver.
+function opcoesUnidadeIng(ing, selecionada) {
+  let html = '';
+  if (ing.embalagem) {
+    const e = ing.embalagem;
+    const sel = (selecionada === 'emb') ? 'selected' : '';
+    html += `<option value="emb" ${sel}>${e.nome} (${e.conteudo} ${e.unidade})</option>`;
+  }
+  const base = ing.unidade_base;
+  const lista = UNIDADES_POR_BASE[base] || [base];
+  const selBase = selecionada && selecionada !== 'emb' ? selecionada : (ing.embalagem ? null : lista[0]);
+  html += lista.map(u => `<option value="${u}" ${u===selBase?'selected':''}>${ROTULOS_UN[u]||u}</option>`).join('');
+  return html;
+}
 function fmtQtd(valor, unidade) {
   const n = Number(valor);
   const txt = n.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
@@ -893,7 +985,7 @@ const Estoque = {
       const minimo = i.minimo_base > 0 ? fmtQtd(i.minimo_exibicao, i.unidade_exibicao) : '<span style="color:var(--text-muted)">—</span>';
       return `<tr>
         <td data-label="Ingrediente"><strong class="link-historico" onclick="Historico.timeline('${i.id}')" title="Ver linha do tempo">${i.nome}</strong></td>
-        <td data-label="Em Estoque" style="text-align:right"><strong>${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</strong></td>
+        <td data-label="Em Estoque" style="text-align:right"><strong>${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</strong>${i.estoque_embalagem!=null?`<br><small style="color:var(--text-muted)">≈ ${i.estoque_embalagem} ${i.embalagem.nome}</small>`:''}</td>
         <td data-label="Mínimo" style="text-align:right;color:var(--text-muted)">${minimo}</td>
         <td data-label="Valor Parado" style="text-align:right">${i.tem_preco ? Fmt.moeda(i.valor_estoque) : '<span class="badge-sem-preco">sem preço</span>'}</td>
         <td data-label="Situação" style="text-align:center">${badge}</td>
@@ -953,16 +1045,24 @@ const Estoque = {
       ? `<div class="contagem-aviso">⚠ ${semPreco.length} item(ns) sem preço não entram no valor. Registre o preço na aba Ingredientes para o estoque ficar exato.</div>`
       : '';
 
-    document.getElementById('contagem-lista').innerHTML = aviso + _estoqueItens.map(i => `
-      <div class="contagem-item" data-id="${i.id}" data-unidade="${i.unidade_exibicao}" data-custo="${i.custo_base}" data-fator="${i.fator_exibicao}" data-sistema="${i.estoque_exibicao}">
+    document.getElementById('contagem-lista').innerHTML = aviso + _estoqueItens.map(i => {
+      // Itens com embalagem são contados NA embalagem (ex.: latas); os demais em kg/L/un.
+      const usaEmb = !!i.embalagem;
+      const unidade = usaEmb ? 'emb' : i.unidade_exibicao;
+      const rotulo = usaEmb ? i.embalagem.nome : i.unidade_exibicao;
+      const fator = usaEmb ? i.conteudo_embalagem_base : i.fator_exibicao;
+      const sistema = usaEmb ? i.estoque_embalagem : i.estoque_exibicao;
+      return `
+      <div class="contagem-item" data-id="${i.id}" data-unidade="${unidade}" data-rotulo="${rotulo}" data-custo="${i.custo_base}" data-fator="${fator}" data-sistema="${sistema}">
         <div class="contagem-item-nome">${i.nome}${i.tem_preco?'':' <span class="badge-sem-preco">sem preço</span>'}</div>
-        <div class="contagem-item-sistema">Sistema: ${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</div>
+        <div class="contagem-item-sistema">Sistema: ${fmtQtd(sistema, rotulo)}</div>
         <div class="contagem-item-input">
-          <input type="number" step="0.001" min="0" value="${i.estoque_exibicao}" oninput="Estoque.recalcContagem()" />
-          <span class="contagem-item-un">${i.unidade_exibicao}</span>
+          <input type="number" step="0.001" min="0" value="${sistema}" oninput="Estoque.recalcContagem()" />
+          <span class="contagem-item-un">${rotulo}</span>
         </div>
         <div class="contagem-item-diff" data-diff></div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     Estoque.recalcContagem();
     UI.abrirModal('modal-contagem');
@@ -977,11 +1077,12 @@ const Estoque = {
       const contado = parseFloat(el.querySelector('input').value);
       const diffEl = el.querySelector('[data-diff]');
       if (!(contado >= 0)) { diffEl.textContent = ''; return; }
+      const rot = el.dataset.rotulo || el.dataset.unidade;
       valorContado += contado * fator * custo;
       const dif = sistema - contado; // positivo = saiu
       if (Math.abs(dif) < 0.0005) { diffEl.innerHTML = '<span class="dif-ok">✓ confere</span>'; }
-      else if (dif > 0) { valorSaiu += dif * fator * custo; diffEl.innerHTML = `<span class="dif-saiu">saiu ${dif.toLocaleString('pt-BR',{maximumFractionDigits:3})} ${el.dataset.unidade}</span>`; }
-      else { diffEl.innerHTML = `<span class="dif-entrou">+${(-dif).toLocaleString('pt-BR',{maximumFractionDigits:3})} ${el.dataset.unidade}</span>`; }
+      else if (dif > 0) { valorSaiu += dif * fator * custo; diffEl.innerHTML = `<span class="dif-saiu">saiu ${dif.toLocaleString('pt-BR',{maximumFractionDigits:3})} ${rot}</span>`; }
+      else { diffEl.innerHTML = `<span class="dif-entrou">+${(-dif).toLocaleString('pt-BR',{maximumFractionDigits:3})} ${rot}</span>`; }
     });
     document.getElementById('contagem-valor').textContent = Fmt.moeda(valorContado);
     document.getElementById('contagem-saiu').textContent = Fmt.moeda(valorSaiu);
@@ -1013,10 +1114,12 @@ const Estoque = {
     document.getElementById('form-estoque').reset();
     document.getElementById('estoque-ing-id').value = i.id;
     document.getElementById('estoque-tipo').value = tipo;
-    document.getElementById('estoque-unidade').innerHTML = opcoesUnidade(i.unidade_base);
+    // Se compra por embalagem, oferece a embalagem como unidade (e usa por padrão)
+    document.getElementById('estoque-unidade').innerHTML = opcoesUnidadeIng(i, i.embalagem ? 'emb' : null);
     document.getElementById('modal-estoque-titulo').textContent = `Movimentar — ${i.nome}`;
+    const eqEmb = i.estoque_embalagem != null ? ` (≈ ${i.estoque_embalagem} ${i.embalagem.nome})` : '';
     document.getElementById('estoque-modal-info').innerHTML =
-      `Estoque atual: <strong>${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</strong>`;
+      `Estoque atual: <strong>${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</strong>${eqEmb}`;
     Estoque.atualizarRotuloTipo();
     UI.abrirModal('modal-estoque');
   },
@@ -1050,8 +1153,11 @@ const Estoque = {
     if (!i) return;
     document.getElementById('form-minimo').reset();
     document.getElementById('minimo-ing-id').value = i.id;
-    document.getElementById('minimo-unidade').innerHTML = opcoesUnidade(i.unidade_base, i.unidade_exibicao);
-    document.getElementById('minimo-quantidade').value = i.minimo_base > 0 ? i.minimo_exibicao : '';
+    const usaEmb = !!i.embalagem;
+    document.getElementById('minimo-unidade').innerHTML = opcoesUnidadeIng(i, usaEmb ? 'emb' : i.unidade_exibicao);
+    let val = '';
+    if (i.minimo_base > 0) val = usaEmb ? Math.round((i.minimo_base / i.conteudo_embalagem_base) * 100) / 100 : i.minimo_exibicao;
+    document.getElementById('minimo-quantidade').value = val;
     document.getElementById('modal-minimo-titulo').textContent = `Estoque Mínimo — ${i.nome}`;
     UI.abrirModal('modal-minimo');
   },

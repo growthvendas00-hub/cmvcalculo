@@ -54,6 +54,29 @@ function exibicao(custoBase, unidadeBaseStr) {
   return { valor: custoBase * ex.fator, unidade: ex.unidade };
 }
 
+// ─── Embalagem (compra por pacote, uso por g/ml/un) ─────────────
+// Uma embalagem é { nome:'lata', conteudo:340, unidade:'g' }.
+// "1 lata contém 340 g" → quantas unidades BASE há em 1 embalagem.
+function conteudoBaseEmbalagem(emb) {
+  if (!emb || !emb.unidade) return 0;
+  const c = paraBase(Number(emb.conteudo) || 0, emb.unidade);
+  return c > 0 ? c : 0;
+}
+
+// Converte uma quantidade informada para a unidade base do ingrediente.
+// unidade pode ser uma unidade padrão (kg/g/L/ml/un) compatível com a base,
+// OU o token 'emb' (embalagem do ingrediente). Retorna null se inválida.
+function converterParaBase(quantidade, unidade, base, embalagem) {
+  const qtd = Number(quantidade);
+  if (!Number.isFinite(qtd) || qtd < 0) return null;
+  if (unidade === 'emb') {
+    const conteudo = conteudoBaseEmbalagem(embalagem);
+    return conteudo > 0 ? qtd * conteudo : null;
+  }
+  if (!existeUnidade(unidade) || unidadeBase(unidade) !== base) return null;
+  return paraBase(qtd, unidade);
+}
+
 module.exports = {
   UNIDADES,
   UNIDADE_EXIBICAO,
@@ -62,4 +85,6 @@ module.exports = {
   dimensao,
   paraBase,
   exibicao,
+  conteudoBaseEmbalagem,
+  converterParaBase,
 };

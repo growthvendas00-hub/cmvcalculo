@@ -8,6 +8,10 @@ Módulos: Ingredientes · Estoque (contagem diária) · Histórico · Fichas Té
 
 No primeiro acesso o sistema pede para **criar uma senha** (a senha da hamburgueria). Depois é só logar. A sessão dura 30 dias por dispositivo. Para trocar a senha, use o botão 🔑 no topo.
 
+## 📦 Compra por embalagem (lata, caixa, pacote)
+
+Itens que você **compra por embalagem mas usa por grama/ml** (lata de milho, caixa com várias unidades, ovo/melão usado em pedaços) agora têm a ponte certa: ao registrar a compra, escolha **"Por embalagem"** e informe o **conteúdo de cada uma** (ex.: 1 lata = 340 g). O custo passa a ser por grama, então a ficha técnica calcula certinho (30 g de milho ≠ 1 lata inteira). No estoque você ainda conta por lata.
+
 ## 🕓 Histórico de estoque
 
 A aba **Histórico** mostra **como estava o estoque em qualquer data**, a **linha do tempo de cada item** (clique no item) e o **comparativo entre dois períodos** (dia, semana, mês) — quanto o estoque cresceu/caiu e o que mais se movimentou.
