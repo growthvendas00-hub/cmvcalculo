@@ -2,7 +2,15 @@
 
 Sistema de controle de **CMV (Custo de Mercadoria Vendida)**, estoque e caixa para hamburgueria e pizzaria.
 
-Módulos: Ingredientes · Estoque (contagem diária) · Fichas Técnicas · Relatório CMV · Compras · Caixa Diário · Custos Fixos.
+Módulos: Ingredientes · Estoque (contagem diária) · Histórico · Fichas Técnicas · Relatório CMV · Compras · Caixa Diário · Custos Fixos. Com **login**, **integração WhatsApp** e **histórico de estoque com comparação entre períodos**.
+
+## 🔐 Login
+
+No primeiro acesso o sistema pede para **criar uma senha** (a senha da hamburgueria). Depois é só logar. A sessão dura 30 dias por dispositivo. Para trocar a senha, use o botão 🔑 no topo.
+
+## 🕓 Histórico de estoque
+
+A aba **Histórico** mostra **como estava o estoque em qualquer data**, a **linha do tempo de cada item** (clique no item) e o **comparativo entre dois períodos** (dia, semana, mês) — quanto o estoque cresceu/caiu e o que mais se movimentou.
 
 ---
 

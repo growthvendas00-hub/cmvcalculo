@@ -8,6 +8,9 @@ const cmvCore = require('../core/cmv');
 const units = require('../core/units');
 const estoqueCore = require('../core/estoque');
 const caixaCore = require('../core/caixa');
+const historicoCore = require('../core/historico');
+
+const RE_DATA = /^\d{4}-\d{2}-\d{2}$/;
 
 // ═══════════════════════════════════════════════════════════════
 // MÓDULO 1 — INGREDIENTES
@@ -402,6 +405,31 @@ router.get('/compras/analise', (req, res) => {
 // Panorama geral: itens, valor total parado e lista de compras
 router.get('/estoque', (req, res) => {
   res.json(estoqueCore.panorama());
+});
+
+// ── Histórico / time-travel ──
+// Foto do estoque ao fim de um dia
+router.get('/estoque/historico/snapshot', (req, res) => {
+  const data = RE_DATA.test(req.query.data || '') ? req.query.data : historicoCore.hojeBR();
+  res.json(historicoCore.snapshot(data));
+});
+
+// Linha do tempo de um ingrediente
+router.get('/estoque/historico/timeline', (req, res) => {
+  const id = req.query.ingrediente_id;
+  if (!id) return res.status(400).json({ erro: 'Informe o ingrediente.' });
+  const r = historicoCore.timeline(id);
+  if (!r) return res.status(404).json({ erro: 'Ingrediente não encontrado.' });
+  res.json(r);
+});
+
+// Comparativo entre duas datas
+router.get('/estoque/historico/comparar', (req, res) => {
+  const { a, b } = req.query;
+  if (!RE_DATA.test(a || '') || !RE_DATA.test(b || '')) {
+    return res.status(400).json({ erro: 'Informe as duas datas (AAAA-MM-DD).' });
+  }
+  res.json(historicoCore.comparar(a, b));
 });
 
 // Histórico de movimentações (todas ou de um ingrediente)

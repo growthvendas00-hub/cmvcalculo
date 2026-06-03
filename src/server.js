@@ -3,6 +3,8 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.set('trust proxy', 1); // honra x-forwarded-proto (Vercel) p/ cookie Secure
+
 // Captura o corpo cru (necessário para validar a assinatura HMAC do WhatsApp)
 app.use(express.json({
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -31,6 +33,18 @@ if (storage.KV_ATIVO) {
     next();
   });
 }
+
+// ─── Gate de autenticação ───────────────────────────────────────
+// Roda DEPOIS do hydrate (precisa das settings carregadas). Libera as
+// rotas de auth e o webhook do WhatsApp (a Meta precisa alcançá-lo).
+const auth = require('./core/auth');
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth/') || req.path.startsWith('/webhook/')) return next();
+  if (auth.autenticado(req)) return next();
+  return res.status(401).json({ erro: 'Não autenticado.' });
+});
+
+app.use('/api/auth', require('./api/auth'));
 
 const routes = require('./api/routes');
 app.use('/api', routes);

@@ -50,6 +50,7 @@ const MOVIMENTOS_FILE    = path.join(DATA_DIR, 'movimentos_estoque.json');
 const CONTAGENS_FILE     = path.join(DATA_DIR, 'contagens.json');
 const CAIXA_FILE         = path.join(DATA_DIR, 'caixa.json');
 const WHATS_LOG_FILE     = path.join(DATA_DIR, 'whatsapp_log.json');
+const SETTINGS_FILE      = path.join(DATA_DIR, 'settings.json');
 
 // Nome da coleção a partir do caminho do arquivo (ex.: .../caixa.json → caixa)
 function chaveDe(caminho) { return path.basename(caminho, '.json'); }
@@ -279,6 +280,17 @@ function salvarWhatsappLog(entrada) {
   salvarJSON(WHATS_LOG_FILE, lista.slice(0, 200)); // mantém os últimos 200
 }
 
+// ─── Configurações do sistema (senha, segredo de sessão, etc.) ────────────────
+
+function lerSettings() {
+  const s = lerJSON(SETTINGS_FILE, {});
+  return s && typeof s === 'object' ? s : {};
+}
+
+function salvarSettings(obj) {
+  salvarJSON(SETTINGS_FILE, obj || {});
+}
+
 module.exports = {
   KV_ATIVO,
   kvHydrate,
@@ -300,6 +312,8 @@ module.exports = {
   deletarLancamento,
   listarWhatsappLog,
   salvarWhatsappLog,
+  lerSettings,
+  salvarSettings,
   listarFichas,
   buscarFichaPorId,
   salvarFicha,

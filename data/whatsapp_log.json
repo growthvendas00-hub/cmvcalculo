@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "id": "aa4fc154-d7b3-4eae-a707-cc355f0db24d",
+    "data": "2026-06-03T21:24:10.948Z",
+    "de": "simulador",
+    "texto": "ajuda",
+    "sucesso": true,
+    "resposta": "🍔 *Comandos do CMV pelo WhatsApp*\n\n💰 *Caixa*\n• entrou 1850 vendas\n• saiu 600 fornecedor\n• saiu 300 salário\n\n📦 *Estoque*\n• comprei carne 5kg 120  (preço + entrada)\n• entrou carne 5kg  (chegou mercadoria)\n• baixa carne 2kg quebra  (perda)\n• contei carne 5kg  (contagem)\n\n📊 *Consultas*\n• caixa  (resultado do dia)\n• estoque  (valor + o que comprar)\n\nDica: o nome do item precisa estar cadastrado no sistema.",
+    "intent": "ajuda"
+  }
+]

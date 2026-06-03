@@ -2,3 +2,6 @@ node_modules/
 .env
 .DS_Store
 *.log
+
+# Credenciais locais (senha/segredo de sessão) — nunca versionar
+data/settings.json

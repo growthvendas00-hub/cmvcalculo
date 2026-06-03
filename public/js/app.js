@@ -89,6 +89,11 @@ const API = {
     Status.set(true);
     const txt = await r.text();
     const data = txt ? JSON.parse(txt) : {};
+    // Sessão expirada / não autenticado: mostra o login (exceto nas rotas de auth)
+    if (r.status === 401 && !path.startsWith('/auth')) {
+      if (typeof Auth !== 'undefined') Auth.exigirLogin();
+      throw { erro: 'Sessão expirada. Faça login novamente.', _auth: true };
+    }
     if (!r.ok) throw data;
     return data;
   },
@@ -887,7 +892,7 @@ const Estoque = {
       const badge = { ok:'<span class="badge-estoque ok">Em estoque</span>', baixo:'<span class="badge-estoque baixo">Baixo</span>', zerado:'<span class="badge-estoque zerado">Zerado</span>' }[i.situacao];
       const minimo = i.minimo_base > 0 ? fmtQtd(i.minimo_exibicao, i.unidade_exibicao) : '<span style="color:var(--text-muted)">—</span>';
       return `<tr>
-        <td data-label="Ingrediente"><strong>${i.nome}</strong></td>
+        <td data-label="Ingrediente"><strong class="link-historico" onclick="Historico.timeline('${i.id}')" title="Ver linha do tempo">${i.nome}</strong></td>
         <td data-label="Em Estoque" style="text-align:right"><strong>${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</strong></td>
         <td data-label="Mínimo" style="text-align:right;color:var(--text-muted)">${minimo}</td>
         <td data-label="Valor Parado" style="text-align:right">${i.tem_preco ? Fmt.moeda(i.valor_estoque) : '<span class="badge-sem-preco">sem preço</span>'}</td>
@@ -1216,6 +1221,214 @@ const Whats = {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// AUTENTICAÇÃO (gate de login)
+// ═══════════════════════════════════════════════════════════════
+let _appIniciado = false;
+
+const Auth = {
+  _mostrar(qual) { // 'carregando' | 'setup' | 'login'
+    document.getElementById('gate').classList.remove('hidden');
+    document.getElementById('gate-carregando').classList.toggle('hidden', qual !== 'carregando');
+    document.getElementById('gate-setup').classList.toggle('hidden', qual !== 'setup');
+    document.getElementById('gate-login').classList.toggle('hidden', qual !== 'login');
+  },
+  _erro(msg) {
+    const el = document.getElementById('gate-erro');
+    el.textContent = msg; el.classList.toggle('hidden', !msg);
+  },
+  exigirLogin() {
+    _appIniciado = false;
+    document.getElementById('btn-logout').classList.add('hidden');
+    document.getElementById('btn-senha').classList.add('hidden');
+    Auth._mostrar('login');
+  },
+  async iniciar() {
+    try {
+      const s = await API.get('/auth/status');
+      if (s.autenticado) return Auth._entrar();
+      Auth._erro('');
+      Auth._mostrar(s.configurado ? 'login' : 'setup');
+    } catch (e) {
+      Auth._erro(e.erro || 'Erro ao conectar.');
+      Auth._mostrar('login');
+    }
+  },
+  _entrar() {
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('btn-logout').classList.remove('hidden');
+    document.getElementById('btn-senha').classList.remove('hidden');
+    if (!_appIniciado) { _appIniciado = true; Ingredientes.carregar().catch(()=>{}); }
+  },
+  async setup(e) {
+    e.preventDefault();
+    const s1 = document.getElementById('setup-senha').value;
+    const s2 = document.getElementById('setup-senha2').value;
+    if (s1.length < 4) return Auth._erro('A senha precisa de ao menos 4 caracteres.');
+    if (s1 !== s2) return Auth._erro('As senhas não conferem.');
+    try { await API.post('/auth/setup', { senha: s1 }); Auth._erro(''); Auth._entrar(); }
+    catch (err) { Auth._erro(err.erro || 'Erro ao criar senha.'); }
+  },
+  async login(e) {
+    e.preventDefault();
+    const senha = document.getElementById('login-senha').value;
+    try { await API.post('/auth/login', { senha }); document.getElementById('login-senha').value=''; Auth._erro(''); Auth._entrar(); }
+    catch (err) { Auth._erro(err.erro || 'Senha incorreta.'); }
+  },
+  async logout() {
+    try { await API.post('/auth/logout'); } catch {}
+    location.reload();
+  },
+  abrirTrocaSenha() {
+    document.getElementById('form-senha').reset();
+    UI.abrirModal('modal-senha');
+  },
+  async trocarSenha(e) {
+    e.preventDefault();
+    const body = {
+      senha_atual: document.getElementById('senha-atual').value,
+      senha_nova: document.getElementById('senha-nova').value,
+    };
+    try {
+      await API.post('/auth/senha', body);
+      UI.fecharModal('modal-senha');
+      UI.toast('Senha alterada com sucesso.');
+    } catch (err) { UI.toast(err.erro || 'Erro ao trocar senha.', 'erro'); }
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO — HISTÓRICO DE ESTOQUE
+// ═══════════════════════════════════════════════════════════════
+function ymdHoje() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function ymdSoma(ymd, dias) {
+  const [a,m,d] = ymd.split('-').map(Number);
+  const dt = new Date(a, m-1, d + dias);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+function fmtYMD(ymd) { // 'YYYY-MM-DD' -> 'DD/MM/AAAA' sem deslize de fuso
+  if (!ymd || ymd.indexOf('-') < 0) return ymd || '—';
+  const [a,m,d] = ymd.split('-');
+  return `${d}/${m}/${a}`;
+}
+
+const Historico = {
+  modo: 'dia',
+  init() {
+    if (!document.getElementById('hist-data-a').value) {
+      document.getElementById('hist-data-a').value = ymdHoje();
+      document.getElementById('hist-data-b').value = ymdHoje();
+    }
+    Historico.atualizar();
+  },
+  trocarModo() {
+    Historico.modo = document.querySelector('input[name="hist-modo"]:checked').value;
+    const comparar = Historico.modo === 'comparar';
+    document.getElementById('hist-campo-b').classList.toggle('hidden', !comparar);
+    document.getElementById('hist-label-a').textContent = comparar ? 'De' : 'Data';
+    if (comparar && !document.getElementById('hist-data-b').value) document.getElementById('hist-data-b').value = ymdHoje();
+    Historico.atualizar();
+  },
+  preset(p) {
+    const hoje = ymdHoje();
+    const setMode = m => {
+      Historico.modo = m;
+      document.querySelector(`input[name="hist-modo"][value="${m}"]`).checked = true;
+      document.getElementById('hist-campo-b').classList.toggle('hidden', m !== 'comparar');
+      document.getElementById('hist-label-a').textContent = m === 'comparar' ? 'De' : 'Data';
+    };
+    if (p === 'hoje') { setMode('dia'); document.getElementById('hist-data-a').value = hoje; }
+    else if (p === 'ontem') { setMode('dia'); document.getElementById('hist-data-a').value = ymdSoma(hoje,-1); }
+    else if (p === '7d') { setMode('comparar'); document.getElementById('hist-data-a').value = ymdSoma(hoje,-7); document.getElementById('hist-data-b').value = hoje; }
+    else if (p === '30d') { setMode('comparar'); document.getElementById('hist-data-a').value = ymdSoma(hoje,-30); document.getElementById('hist-data-b').value = hoje; }
+    else if (p === 'mespassado') {
+      setMode('comparar');
+      const d = new Date(); const primeiroEste = new Date(d.getFullYear(), d.getMonth(), 1);
+      const ultimoPassado = new Date(primeiroEste - 1);
+      const primeiroPassado = new Date(ultimoPassado.getFullYear(), ultimoPassado.getMonth(), 1);
+      const fmt = x => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+      document.getElementById('hist-data-a').value = fmt(primeiroPassado);
+      document.getElementById('hist-data-b').value = fmt(ultimoPassado);
+    }
+    Historico.atualizar();
+  },
+  async atualizar() {
+    if (Historico.modo === 'comparar') return Historico.comparar();
+    return Historico.umDia();
+  },
+  async umDia() {
+    const data = document.getElementById('hist-data-a').value || ymdHoje();
+    let d;
+    try { d = await API.get('/estoque/historico/snapshot?data=' + data); } catch (e) { return; }
+    document.getElementById('hist-resumo').innerHTML = `
+      <div class="resumo-card"><div class="valor">${Fmt.moeda(d.valor_total)}</div><div class="label">Valor do Estoque em ${fmtYMD(data)}</div></div>
+      <div class="resumo-card"><div class="valor">${d.itens.filter(i=>i.estoque_base>0).length}</div><div class="label">Itens com Estoque</div></div>`;
+    const linhas = d.itens.map(i => `<tr onclick="Historico.timeline('${i.id}')" class="clicavel">
+      <td data-label="Ingrediente"><strong>${i.nome}</strong></td>
+      <td data-label="Estoque" style="text-align:right">${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}</td>
+      <td data-label="Valor" style="text-align:right">${i.tem_preco_na_data ? Fmt.moeda(i.valor) : '<span style="color:var(--text-muted)">'+Fmt.moeda(i.valor)+' *</span>'}</td>
+    </tr>`).join('');
+    document.getElementById('hist-conteudo').innerHTML = `
+      <div class="card"><table>
+        <thead><tr><th>Ingrediente</th><th style="text-align:right">Em Estoque</th><th style="text-align:right">Valor</th></tr></thead>
+        <tbody>${linhas || '<tr><td colspan="3" class="empty">Sem itens.</td></tr>'}</tbody>
+      </table></div>
+      <p class="hist-nota">Clique num item para ver a linha do tempo. * valor estimado com o preço atual (sem compra registrada até a data).</p>`;
+  },
+  async comparar() {
+    const a = document.getElementById('hist-data-a').value, b = document.getElementById('hist-data-b').value;
+    if (!a || !b) return;
+    let d;
+    try { d = await API.get(`/estoque/historico/comparar?a=${a}&b=${b}`); } catch (e) { return; }
+    const delta = d.delta_total;
+    const cor = delta > 0 ? 'var(--green)' : (delta < 0 ? 'var(--red)' : 'var(--text-muted)');
+    document.getElementById('hist-resumo').innerHTML = `
+      <div class="resumo-card"><div class="valor" style="font-size:1.3rem">${Fmt.moeda(d.valor_total_a)}</div><div class="label">Em ${fmtYMD(a)}</div></div>
+      <div class="resumo-card"><div class="valor" style="font-size:1.3rem">${Fmt.moeda(d.valor_total_b)}</div><div class="label">Em ${fmtYMD(b)}</div></div>
+      <div class="resumo-card"><div class="valor" style="color:${cor}">${delta>0?'+':''}${Fmt.moeda(delta)}</div><div class="label">Variação do Estoque</div></div>`;
+    const linhas = d.itens.map(i => {
+      const dv = i.delta_valor;
+      const c = dv>0?'var(--green)':(dv<0?'var(--red)':'var(--text-muted)');
+      return `<tr onclick="Historico.timeline('${i.id}')" class="clicavel">
+        <td data-label="Ingrediente"><strong>${i.nome}</strong></td>
+        <td data-label="Antes" style="text-align:right;color:var(--text-muted)">${i.qtd_a} ${i.unidade_exibicao}</td>
+        <td data-label="Depois" style="text-align:right">${i.qtd_b} ${i.unidade_exibicao}</td>
+        <td data-label="Variação R$" style="text-align:right;color:${c};font-weight:600">${dv>0?'+':''}${Fmt.moeda(dv)}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('hist-conteudo').innerHTML = `
+      <div class="card"><table>
+        <thead><tr><th>Ingrediente</th><th style="text-align:right">Antes</th><th style="text-align:right">Depois</th><th style="text-align:right">Variação R$</th></tr></thead>
+        <tbody>${linhas || '<tr><td colspan="4" class="empty">Sem itens.</td></tr>'}</tbody>
+      </table></div>
+      <div class="hist-periodo">📈 No período: <strong>${d.periodo.total_movimentos}</strong> movimentações em <strong>${d.periodo.itens_movimentados}</strong> itens.</div>`;
+  },
+  async timeline(id) {
+    let d;
+    try { d = await API.get('/estoque/historico/timeline?ingrediente_id=' + id); } catch (e) { return; }
+    document.getElementById('modal-timeline-titulo').textContent = 'Linha do Tempo — ' + d.ingrediente.nome;
+    const rotulos = { entrada:'➕ Entrada', saida:'➖ Baixa', ajuste:'🔄 Ajuste', contagem:'📋 Contagem' };
+    const cor = { entrada:'var(--green)', saida:'var(--red)', ajuste:'var(--accent)', contagem:'var(--accent)' };
+    const itens = d.movimentos.length ? d.movimentos.map(m => {
+      const sinal = m.quantidade_base > 0 ? '+' : '';
+      return `<div class="tl-item">
+        <div class="tl-data">${Fmt.data(m.data)}</div>
+        <div class="tl-corpo">
+          <span class="tl-tipo" style="color:${cor[m.tipo]||'var(--text)'}">${rotulos[m.tipo]||m.tipo}</span>
+          <span class="tl-qtd">${sinal}${m.quantidade_exibicao} ${m.unidade_exibicao}</span>
+          ${m.motivo?`<span class="tl-motivo">${m.motivo}</span>`:''}
+        </div>
+        <div class="tl-saldo">saldo: <strong>${m.saldo_exibicao} ${m.unidade_exibicao}</strong></div>
+      </div>`;
+    }).join('') : '<p class="empty">Nenhuma movimentação registrada para este item ainda.</p>';
+    document.getElementById('modal-timeline-conteudo').innerHTML = itens;
+    UI.abrirModal('modal-timeline');
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
 // NAVEGAÇÃO + INIT
 // ═══════════════════════════════════════════════════════════════
 document.querySelectorAll('.tab').forEach(btn => {
@@ -1230,6 +1443,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (target === 'custos') CustosFixos.carregar();
     if (target === 'compras') Compras.carregar();
     if (target === 'estoque') Estoque.carregar();
+    if (target === 'historico') Historico.init();
     if (target === 'caixa') { Caixa.carregar(); Whats.carregarLog(); }
   });
 });
@@ -1237,7 +1451,5 @@ document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) m.classList.add('hidden'); });
 });
 
-(async () => {
-  try { await Ingredientes.carregar(); }
-  catch (e) { UI.toast(e.erro || 'Não foi possível conectar ao servidor.', 'erro'); }
-})();
+// Início: primeiro resolve a autenticação; o app só carrega após login.
+Auth.iniciar();

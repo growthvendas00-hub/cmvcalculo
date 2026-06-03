@@ -8,6 +8,30 @@
 </head>
 <body>
 
+<!-- ══════════════════════ GATE DE LOGIN ══════════════════════ -->
+<div id="gate" class="gate">
+  <div class="gate-box">
+    <div class="gate-logo"><span class="logo-icon">🍔</span><h1>CMV Studio</h1></div>
+
+    <div id="gate-carregando" class="gate-msg">Carregando…</div>
+
+    <form id="gate-setup" class="gate-form hidden" onsubmit="Auth.setup(event)">
+      <p class="gate-sub">Primeiro acesso — crie a senha da sua hamburgueria.</p>
+      <input id="setup-senha" type="password" placeholder="Crie uma senha" autocomplete="new-password" />
+      <input id="setup-senha2" type="password" placeholder="Repita a senha" autocomplete="new-password" />
+      <button type="submit" class="btn-primary">Criar senha e entrar</button>
+    </form>
+
+    <form id="gate-login" class="gate-form hidden" onsubmit="Auth.login(event)">
+      <p class="gate-sub">Entre para acessar o painel.</p>
+      <input id="login-senha" type="password" placeholder="Senha" autocomplete="current-password" />
+      <button type="submit" class="btn-primary">Entrar</button>
+    </form>
+
+    <div id="gate-erro" class="gate-erro hidden"></div>
+  </div>
+</div>
+
 <header>
   <div class="logo">
     <span class="logo-icon">🍔</span>
@@ -16,12 +40,17 @@
       <p>Controle de Custo de Mercadoria Vendida</p>
     </div>
   </div>
-  <div id="status-servidor" class="status-servidor">● Conectando…</div>
+  <div class="header-acoes">
+    <div id="status-servidor" class="status-servidor">● Conectando…</div>
+    <button id="btn-senha" class="btn-header hidden" onclick="Auth.abrirTrocaSenha()" title="Trocar senha">🔑</button>
+    <button id="btn-logout" class="btn-header hidden" onclick="Auth.logout()">Sair</button>
+  </div>
 </header>
 
 <nav class="tabs">
   <button class="tab active" data-tab="ingredientes">Ingredientes</button>
   <button class="tab" data-tab="estoque">Estoque</button>
+  <button class="tab" data-tab="historico">Histórico</button>
   <button class="tab" data-tab="fichas">Fichas Técnicas</button>
   <button class="tab" data-tab="relatorio">Relatório CMV</button>
   <button class="tab" data-tab="compras">Compras</button>
@@ -136,6 +165,62 @@
   </div>
 
   <div id="estoque-historico" style="margin-top:24px"></div>
+</section>
+
+<!-- ══════════════════════ HISTÓRICO DE ESTOQUE ══════════════════════ -->
+<section id="tab-historico" class="tab-content">
+  <div class="section-header">
+    <h2>Histórico de Estoque</h2>
+    <button class="btn-secondary" onclick="Historico.atualizar()">↻ Atualizar</button>
+  </div>
+
+  <div class="tutorial-box" id="tutorial-historico">
+    <div class="tutorial-top">
+      <div class="tutorial-titulo"><span class="tutorial-icone">🕓</span><strong>Como usar o histórico?</strong></div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-historico')">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-corpo collapsed">
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">FOTO DE UM DIA</span>
+        <p>Escolha uma data e veja <strong>como estava o estoque naquele dia</strong> — quantidade e valor de cada item. O sistema reconstrói pela linha do tempo das movimentações.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-info">
+        <span class="tutorial-label">COMPARAR PERÍODOS</span>
+        <p>Ative <strong>Comparar</strong> e escolha duas datas (ou use os atalhos: 7 dias, 30 dias, mês passado) para ver <strong>quanto o estoque cresceu ou caiu</strong> e o que mais se movimentou.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-alerta">
+        <span class="tutorial-label">LINHA DO TEMPO</span>
+        <p>Clique em qualquer item para ver <strong>todas as mudanças</strong> dele — entradas, baixas, contagens e compras — com o saldo após cada uma.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="hist-controles">
+    <div class="hist-modo">
+      <label class="hist-radio"><input type="radio" name="hist-modo" value="dia" checked onchange="Historico.trocarModo()"> Foto de um dia</label>
+      <label class="hist-radio"><input type="radio" name="hist-modo" value="comparar" onchange="Historico.trocarModo()"> Comparar</label>
+    </div>
+    <div class="hist-datas">
+      <div class="hist-campo" id="hist-campo-a">
+        <label id="hist-label-a">Data</label>
+        <input id="hist-data-a" type="date" onchange="Historico.atualizar()" />
+      </div>
+      <div class="hist-campo hidden" id="hist-campo-b">
+        <label>Até</label>
+        <input id="hist-data-b" type="date" onchange="Historico.atualizar()" />
+      </div>
+    </div>
+    <div class="hist-presets">
+      <button class="chip" onclick="Historico.preset('hoje')">Hoje</button>
+      <button class="chip" onclick="Historico.preset('ontem')">Ontem</button>
+      <button class="chip" onclick="Historico.preset('7d')">7 dias</button>
+      <button class="chip" onclick="Historico.preset('30d')">30 dias</button>
+      <button class="chip" onclick="Historico.preset('mespassado')">Mês passado</button>
+    </div>
+  </div>
+
+  <div id="hist-resumo" class="relatorio-resumo"></div>
+  <div id="hist-conteudo"></div>
 </section>
 
 <!-- ══════════════════════ MÓDULO 2 — FICHAS TÉCNICAS ══════════════════════ -->
@@ -774,6 +859,41 @@
       <div class="modal-actions">
         <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-caixa')">Cancelar</button>
         <button type="submit" class="btn-primary">Salvar Lançamento</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: LINHA DO TEMPO DO ITEM ══════════════════════ -->
+<div id="modal-timeline" class="modal hidden">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3 id="modal-timeline-titulo">Linha do Tempo</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-timeline')">✕</button>
+    </div>
+    <div id="modal-timeline-conteudo" style="padding:16px 20px"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: TROCAR SENHA ══════════════════════ -->
+<div id="modal-senha" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Trocar Senha</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-senha')">✕</button>
+    </div>
+    <form id="form-senha" onsubmit="Auth.trocarSenha(event)">
+      <div class="form-group">
+        <label>Senha atual</label>
+        <input id="senha-atual" type="password" autocomplete="current-password" required />
+      </div>
+      <div class="form-group">
+        <label>Nova senha</label>
+        <input id="senha-nova" type="password" autocomplete="new-password" required />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-senha')">Cancelar</button>
+        <button type="submit" class="btn-primary">Salvar</button>
       </div>
     </form>
   </div>
