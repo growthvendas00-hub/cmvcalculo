@@ -1396,3 +1396,40 @@ tbody tr { transition: background 0.14s; }
   .relatorio-resumo { grid-template-columns: 1fr 1fr; }
   .caixa-dia-totais { font-size: 0.78rem; gap: 8px; }
 }
+
+/* ══════════════════════ AUDITORIA TÉCNICA ══════════════════════ */
+#auditoria-lista { display: flex; flex-direction: column; gap: 12px; }
+
+.auditoria-ok {
+  text-align: center; padding: 48px 20px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.auditoria-ok-icone { font-size: 3rem; margin-bottom: 8px; }
+.auditoria-ok h3 { font-size: 1.1rem; margin-bottom: 6px; }
+.auditoria-ok p { color: var(--text-muted); font-size: 0.88rem; max-width: 460px; margin: 0 auto; line-height: 1.6; }
+
+.aud-item {
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 4px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.aud-item.crit { border-left-color: var(--red); }
+.aud-item.avi  { border-left-color: var(--accent); }
+.aud-item.inf  { border-left-color: var(--text-muted); }
+
+.aud-item-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.aud-badge {
+  font-size: 0.72rem; font-weight: 700; padding: 2px 9px; border-radius: 20px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.aud-badge.crit { background: rgba(231,76,60,0.15); color: var(--red); }
+.aud-badge.avi  { background: rgba(245,166,35,0.15); color: var(--accent); }
+.aud-badge.inf  { background: rgba(136,145,168,0.15); color: var(--text-muted); }
+.aud-categoria { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+
+.aud-titulo { font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; }
+.aud-detalhe { font-size: 0.85rem; color: var(--text-muted); line-height: 1.55; }
+.aud-alvo { display: inline-block; margin-top: 8px; font-size: 0.78rem; color: var(--text-muted); background: var(--surface2); padding: 3px 9px; border-radius: 6px; }
+.aud-alvo strong { color: var(--text); }
+.aud-sugestao { margin-top: 8px; font-size: 0.82rem; color: var(--text); background: rgba(39,174,96,0.08); border: 1px solid rgba(39,174,96,0.25); padding: 7px 10px; border-radius: 8px; line-height: 1.5; }
+.aud-corrigir { margin-top: 10px; }

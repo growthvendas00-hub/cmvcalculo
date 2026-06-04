@@ -1535,6 +1535,76 @@ const Historico = {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// MÓDULO 8 — AUDITORIA TÉCNICA
+// ═══════════════════════════════════════════════════════════════
+const Auditoria = {
+  _ultimo: null,
+  async carregar() {
+    const lista = document.getElementById('auditoria-lista');
+    const resumo = document.getElementById('auditoria-resumo');
+    resumo.innerHTML = '<div class="resumo-card"><div class="valor">…</div><div class="label">Verificando</div></div>';
+    lista.innerHTML = '';
+    let data;
+    try { data = await API.get('/auditoria'); } catch (e) { lista.innerHTML = `<p class="empty">${(e&&e.erro)||'Erro ao verificar.'}</p>`; resumo.innerHTML=''; return; }
+    Auditoria._ultimo = data;
+    const r = data.resumo;
+
+    const tudoOk = r.total === 0;
+    resumo.innerHTML = `
+      <div class="resumo-card"><div class="valor" style="color:${r.criticos?'var(--red)':'var(--text-muted)'}">${r.criticos}</div><div class="label">Críticos</div></div>
+      <div class="resumo-card"><div class="valor" style="color:${r.avisos?'var(--accent)':'var(--text-muted)'}">${r.avisos}</div><div class="label">Avisos</div></div>
+      <div class="resumo-card"><div class="valor" style="color:var(--text-muted)">${r.infos}</div><div class="label">Informações</div></div>
+      <div class="resumo-card"><div class="valor" style="font-size:1rem;color:${tudoOk?'var(--green)':'var(--text)'}">${tudoOk?'✅ Tudo certo':'⚠ Revisar'}</div><div class="label">${r.contagens.ingredientes} ing · ${r.contagens.fichas} fichas</div></div>`;
+
+    if (tudoOk) {
+      lista.innerHTML = `<div class="auditoria-ok">
+        <div class="auditoria-ok-icone">✅</div>
+        <h3>Nenhum problema técnico encontrado</h3>
+        <p>Ingredientes, fichas, estoque e custos estão consistentes. Rode esta verificação sempre que cadastrar muita coisa nova.</p>
+      </div>`;
+      return;
+    }
+
+    const sevMeta = {
+      critico: { rotulo: 'Crítico', icone: '⛔', classe: 'crit' },
+      aviso:   { rotulo: 'Aviso',   icone: '⚠️', classe: 'avi' },
+      info:    { rotulo: 'Info',    icone: 'ℹ️', classe: 'inf' },
+    };
+    lista.innerHTML = data.problemas.map((p, idx) => {
+      const m = sevMeta[p.severidade] || sevMeta.info;
+      const alvoTxt = p.alvo ? `<span class="aud-alvo">${({ingrediente:'Ingrediente',ficha:'Ficha',mes:'Mês',estoque:'Estoque'})[p.alvo.tipo]||p.alvo.tipo}: <strong>${(p.alvo.nome||'').replace(/</g,'&lt;')}</strong></span>` : '';
+      const sug = p.sugestao ? `<div class="aud-sugestao">💡 ${p.sugestao.replace(/</g,'&lt;')}</div>` : '';
+      const btn = p.acao ? `<button class="btn-confirm aud-corrigir" onclick="Auditoria.corrigir('${p.acao}', this)">Corrigir automaticamente</button>` : '';
+      return `<div class="aud-item ${m.classe}">
+        <div class="aud-item-topo">
+          <span class="aud-badge ${m.classe}">${m.icone} ${m.rotulo}</span>
+          <span class="aud-categoria">${p.categoria}</span>
+        </div>
+        <div class="aud-titulo">${p.titulo.replace(/</g,'&lt;')}</div>
+        <div class="aud-detalhe">${p.detalhe.replace(/</g,'&lt;')}</div>
+        ${alvoTxt}
+        ${sug}
+        ${btn}
+      </div>`;
+    }).join('');
+  },
+
+  async corrigir(acao, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Corrigindo…'; }
+    try {
+      const res = await API.post('/auditoria/corrigir', { acao });
+      UI.toast(res.mensagem || 'Correção aplicada.');
+      // Recarrega telas que podem ter mudado + a própria auditoria
+      await Auditoria.carregar();
+      Fichas.carregar?.().catch(()=>{});
+    } catch (err) {
+      UI.toast(err.erro || 'Erro ao corrigir.', 'erro');
+      if (btn) { btn.disabled = false; btn.textContent = 'Corrigir automaticamente'; }
+    }
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
 // NAVEGAÇÃO + INIT
 // ═══════════════════════════════════════════════════════════════
 document.querySelectorAll('.tab').forEach(btn => {
@@ -1551,6 +1621,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (target === 'estoque') Estoque.carregar();
     if (target === 'historico') Historico.init();
     if (target === 'caixa') { Caixa.carregar(); Whats.carregarLog(); }
+    if (target === 'auditoria') Auditoria.carregar();
   });
 });
 document.querySelectorAll('.modal').forEach(m => {

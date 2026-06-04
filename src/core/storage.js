@@ -224,6 +224,11 @@ function salvarMovimento(mov) {
   salvarJSON(MOVIMENTOS_FILE, lista);
 }
 
+// Substitui toda a coleção de movimentos (usado pela limpeza de órfãos da auditoria)
+function salvarTodosMovimentos(lista) {
+  salvarJSON(MOVIMENTOS_FILE, Array.isArray(lista) ? lista : []);
+}
+
 // ─── Contagens de Estoque (inventário inicial + conferências diárias) ─────────
 
 function listarContagens() {
@@ -303,6 +308,7 @@ module.exports = {
   listarMovimentos,
   listarMovimentosPorIngrediente,
   salvarMovimento,
+  salvarTodosMovimentos,
   listarContagens,
   salvarContagem,
   ultimaContagem,

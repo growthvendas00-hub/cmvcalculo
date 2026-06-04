@@ -85,16 +85,18 @@ function calcularCMV(ficha) {
   const erros = validarFicha(ficha);
   if (erros.length > 0) return { valido: false, erros };
 
-  let custo_total_insumos = 0;
+  let custo_total_insumos_preciso = 0; // soma com precisão; arredonda só no fim
   const detalhamento = [];
 
   for (const item of ficha.ingredientes) {
     const ing = storage.buscarIngredientePorId(item.ingrediente_id);
     const fator = item.fator_correcao && item.fator_correcao > 0 ? item.fator_correcao : 1.0;
     const quantidade_real = arredondar(item.quantidade * fator, 2);
-    // custo da porção em centavos
-    const custo_na_porcao = arredondar(ing.custo_base * item.quantidade * fator, 2);
-    custo_total_insumos = arredondar(custo_total_insumos + custo_na_porcao, 2);
+    // custo exato da porção (sem arredondar antes de somar — evita perder centavos
+    // em itens baratos como temperos: 1g de sal não vira "R$ 0,01" no total)
+    const custo_na_porcao_preciso = ing.custo_base * item.quantidade * fator;
+    custo_total_insumos_preciso += custo_na_porcao_preciso;
+    const custo_na_porcao = arredondar(custo_na_porcao_preciso, 2); // só para exibir
 
     const ex = units.exibicao(ing.custo_base, ing.unidade_base);
     detalhamento.push({
@@ -111,6 +113,7 @@ function calcularCMV(ficha) {
     });
   }
 
+  const custo_total_insumos = arredondar(custo_total_insumos_preciso, 2);
   const custo_embalagem = arredondar(ficha.custo_embalagem || 0);
 
   // Rateio de custos fixos (opcional)

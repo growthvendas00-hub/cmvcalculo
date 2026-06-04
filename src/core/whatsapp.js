@@ -68,6 +68,11 @@ function extrairQuantidade(texto) {
   return { quantidade: valor, unidade: un, original: m[0] };
 }
 
+// Escapa caracteres especiais para uso seguro dentro de uma RegExp
+function escaparRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Acha o ingrediente citado no texto (casa pelo nome ou por palavra do nome)
 function acharIngrediente(texto) {
   const norm = normalizar(texto);
@@ -75,8 +80,10 @@ function acharIngrediente(texto) {
   let melhor = null, melhorTam = 0;
   for (const i of ings) {
     const nome = normalizar(i.nome);
+    // nomes com hífen/parênteses (ex.: "Coca-Cola (lata)") quebrariam a RegExp
+    // se não fossem escapados — por isso escaparRegex.
     const casa = norm.includes(nome) ||
-      nome.split(' ').some(p => p.length >= 3 && new RegExp(`\\b${p}`).test(norm));
+      nome.split(' ').some(p => p.length >= 3 && new RegExp(`\\b${escaparRegex(p)}`).test(norm));
     if (casa && nome.length > melhorTam) { melhor = i; melhorTam = nome.length; }
   }
   return melhor;

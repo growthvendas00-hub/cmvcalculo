@@ -39,7 +39,11 @@ if (storage.KV_ATIVO) {
 // rotas de auth e o webhook do WhatsApp (a Meta precisa alcançá-lo).
 const auth = require('./core/auth');
 app.use('/api', (req, res, next) => {
-  if (req.path.startsWith('/auth/') || req.path.startsWith('/webhook/')) return next();
+  // Libera SÓ o que a Meta precisa alcançar sem cookie: a verificação (GET) e o
+  // recebimento (POST) do webhook, ambos em /webhook/whatsapp exato, e as rotas
+  // de auth. O simulador (/webhook/whatsapp/test) e o log ficam protegidos —
+  // senão qualquer um poderia injetar lançamentos sem login.
+  if (req.path.startsWith('/auth/') || req.path === '/webhook/whatsapp') return next();
   if (auth.autenticado(req)) return next();
   return res.status(401).json({ erro: 'Não autenticado.' });
 });
@@ -51,6 +55,10 @@ app.use('/api', routes);
 
 // Webhook do WhatsApp (fica sob /api para herdar o carregamento do banco KV)
 app.use('/api/webhook', require('./api/webhook'));
+
+// Rota de API não encontrada → responde JSON (não a página). Evita que um
+// fetch para um endpoint errado receba HTML e quebre o JSON.parse no front.
+app.use('/api', (req, res) => res.status(404).json({ erro: 'Rota de API não encontrada.' }));
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));

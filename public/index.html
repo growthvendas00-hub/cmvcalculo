@@ -56,6 +56,7 @@
   <button class="tab" data-tab="compras">Compras</button>
   <button class="tab" data-tab="caixa">Caixa Diário</button>
   <button class="tab" data-tab="custos">Custos Fixos</button>
+  <button class="tab" data-tab="auditoria">🔍 Auditoria</button>
 </nav>
 
 <!-- ══════════════════════ MÓDULO 1 — INGREDIENTES ══════════════════════ -->
@@ -520,6 +521,38 @@
       </div>
     </div>
   </div>
+</section>
+
+<!-- ══════════════════════ ABA: AUDITORIA TÉCNICA ══════════════════════ -->
+<section id="tab-auditoria" class="tab-content">
+  <div class="section-header">
+    <h2>Auditoria Técnica</h2>
+    <button class="btn-primary" onclick="Auditoria.carregar()">🔄 Verificar agora</button>
+  </div>
+
+  <div class="tutorial-box" id="tutorial-auditoria">
+    <div class="tutorial-top">
+      <div class="tutorial-titulo"><span class="tutorial-icone">🔍</span><strong>O que a auditoria faz?</strong></div>
+      <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-auditoria')">Mostrar ▼</button>
+    </div>
+    <div class="tutorial-corpo collapsed">
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">CAÇA ERROS DE LÓGICA</span>
+        <p>Procura combinações que produzem <strong>números errados sem você perceber</strong>: item comprado por lata mas usado por grama, custo absurdo por unidade, ficha vendendo no prejuízo, CMV desatualizado, estoque fora de sincronia.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-info">
+        <span class="tutorial-label">3 NÍVEIS</span>
+        <p><strong style="color:var(--red)">Crítico</strong> = conta errada agora, resolva já. <strong style="color:var(--accent)">Aviso</strong> = provável erro de modelagem, confira. <strong style="color:var(--text-muted)">Info</strong> = higiene de dados, opcional.</p>
+      </div>
+      <div class="tutorial-bloco tutorial-alerta">
+        <span class="tutorial-label">CORRIGIR</span>
+        <p>Alguns problemas têm botão <em>Corrigir</em> — aplicam um ajuste seguro automático (recalcular fichas, sincronizar estoque, limpar registros órfãos).</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="auditoria-resumo" class="relatorio-resumo"></div>
+  <div id="auditoria-lista"></div>
 </section>
 
 <!-- ══════════════════════ MODAL: COMPRA / PREÇO DE INGREDIENTE ══════════════════════ -->

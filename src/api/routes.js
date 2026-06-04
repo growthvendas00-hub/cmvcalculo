@@ -9,8 +9,28 @@ const units = require('../core/units');
 const estoqueCore = require('../core/estoque');
 const caixaCore = require('../core/caixa');
 const historicoCore = require('../core/historico');
+const auditoriaCore = require('../core/auditoria');
 
 const RE_DATA = /^\d{4}-\d{2}-\d{2}$/;
+
+// Quando a unidade de uso muda, o estoque antigo perde o sentido e é zerado.
+// Registramos esse "ajuste para 0" no histórico para o log NÃO ficar divergente
+// do estoque atual (senão a foto por data mentiria). Bug histórico corrigido.
+function logarZeragemEstoque(ing, estoqueAntes, motivo) {
+  if (!(Number(estoqueAntes) > 0)) return;
+  storage.salvarMovimento({
+    id: uuidv4(),
+    ingrediente_id: ing.id,
+    ingrediente_nome: ing.nome,
+    tipo: 'ajuste',
+    quantidade_base: cmvCore.arredondar(0 - Number(estoqueAntes), 3),
+    unidade_base: ing.unidade_base,
+    estoque_antes: Number(estoqueAntes),
+    estoque_depois: 0,
+    motivo: motivo || 'Estoque zerado: unidade de uso alterada',
+    data: new Date().toISOString(),
+  });
+}
 
 // ═══════════════════════════════════════════════════════════════
 // MÓDULO 1 — INGREDIENTES
@@ -116,7 +136,16 @@ router.post('/ingredientes', (req, res) => {
       ultima_atualizacao: new Date().toISOString(),
     };
     // Se a unidade de USO mudou (ex.: 'un' → 'g'), o estoque antigo perde o sentido.
-    if (baseMudou) ingrediente.estoque_atual = 0;
+    if (baseMudou) {
+      const estoqueAntes = Number(existente.estoque_atual) || 0;
+      ingrediente.estoque_atual = 0;
+      // Uma embalagem antiga pode ter ficado com dimensão incompatível com a nova base.
+      if (ingrediente.embalagem && units.unidadeBase(ingrediente.embalagem.unidade) !== ingrediente.unidade_base) {
+        ingrediente.embalagem = embalagem || null;
+      }
+      storage.salvarIngrediente(ingrediente);
+      logarZeragemEstoque(ingrediente, estoqueAntes, 'Estoque zerado: unidade de uso alterada na compra');
+    }
   } else {
     if (!nome) return res.status(400).json({ erro: 'Informe o nome do ingrediente.' });
     ingrediente = {
@@ -175,8 +204,13 @@ router.put('/ingredientes/:id', (req, res) => {
     }
     ing.nome = nome.trim();
   }
+  let baseMudou = false;
+  let estoqueAntes = Number(ing.estoque_atual) || 0;
   if (unidade_base && units.existeUnidade(unidade_base)) {
-    if (ing.unidade_base && ing.unidade_base !== unidade_base) ing.estoque_atual = 0; // mudou a unidade de uso
+    if (ing.unidade_base && ing.unidade_base !== unidade_base) {
+      baseMudou = true;
+      ing.estoque_atual = 0; // mudou a unidade de uso → estoque antigo perde o sentido
+    }
     ing.unidade_base = unidade_base;
   }
   // Embalagem: objeto {nome,conteudo,unidade} para definir, ou null/false para remover
@@ -192,9 +226,13 @@ router.put('/ingredientes/:id', (req, res) => {
       return res.status(400).json({ erro: `O conteúdo da embalagem deve ser em ${ing.unidade_base} (a unidade de uso do item).` });
     }
     ing.embalagem = { nome: (embalagem.nome || 'embalagem').trim() || 'embalagem', conteudo, unidade: un };
+  } else if (baseMudou && ing.embalagem && units.unidadeBase(ing.embalagem.unidade) !== ing.unidade_base) {
+    // Mudou a unidade de uso e não veio embalagem nova: a antiga ficou incompatível.
+    ing.embalagem = null;
   }
   ing.ultima_atualizacao = new Date().toISOString();
   storage.salvarIngrediente(ing);
+  if (baseMudou) logarZeragemEstoque(ing, estoqueAntes, 'Estoque zerado: unidade de uso alterada');
   res.json({ ingrediente: ing, mensagem: 'Ingrediente atualizado.' });
 });
 
@@ -222,9 +260,10 @@ router.get('/fichas/:id', (req, res) => {
 });
 
 function montarFicha(body) {
+  const tipo = cmvCore.VENDAS_TIPOS.includes(body.tipo) ? body.tipo : 'hamburguer';
   return {
     nome: (body.nome || '').trim(),
-    tipo: body.tipo || 'hamburguer',
+    tipo,
     preco_venda: parseFloat(body.preco_venda) || 0,
     custo_embalagem: parseFloat(body.custo_embalagem || 0),
     incluir_rateio: !!body.incluir_rateio,
@@ -577,6 +616,21 @@ router.delete('/caixa/:id', (req, res) => {
   }
   storage.deletarLancamento(req.params.id);
   res.json({ mensagem: 'Lançamento excluído.' });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO 8 — AUDITORIA TÉCNICA (caça-bugs de modelagem/cálculo)
+// ═══════════════════════════════════════════════════════════════
+
+router.get('/auditoria', (req, res) => {
+  res.json(auditoriaCore.executar());
+});
+
+// Correções automáticas seguras: reconfirmar_fichas | sincronizar_estoque | limpar_movimentos_orfaos
+router.post('/auditoria/corrigir', (req, res) => {
+  const r = auditoriaCore.corrigir((req.body && req.body.acao) || '');
+  if (r.erro) return res.status(400).json(r);
+  res.json(r);
 });
 
 module.exports = router;
