@@ -35,6 +35,7 @@ if (KV_ATIVO) {
 let DB = {};
 let DB_SUJO = false;       // há alterações a gravar?
 let DB_CARREGADO = false;  // já hidratou ao menos uma vez nesta instância?
+let DB_TINHA_DADOS = false; // o banco hidratado já tinha conteúdo? (anti-wipe)
 
 // ─── Modo LOCAL: pasta e arquivos ─────────────────────────────────────────────
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
@@ -66,12 +67,30 @@ async function kvHydrate() {
   DB = (blob && typeof blob === 'object') ? blob : {};
   DB_CARREGADO = true;
   DB_SUJO = false;
+  DB_TINHA_DADOS = Object.keys(DB).length > 0;
 }
 
 async function kvFlush() {
   if (!KV_ATIVO || !redis || !DB_SUJO) return;
+  // PROTEÇÃO ANTI-WIPE: nunca gravar um banco vazio por cima de dados que
+  // existiam. Se algum bug zerasse o DB em memória, sem isto perderíamos tudo.
+  const vazio = !DB || Object.keys(DB).length === 0;
+  if (vazio && DB_TINHA_DADOS) {
+    console.error('[storage] kvFlush ABORTADO: tentativa de gravar banco vazio sobre dados existentes.');
+    DB_SUJO = false;
+    return;
+  }
   await redis.set(KV_CHAVE, DB);
   DB_SUJO = false;
+  DB_TINHA_DADOS = Object.keys(DB).length > 0;
+}
+
+// Backup no próprio KV: guarda a foto atual numa chave datada (durável).
+async function backupKV() {
+  if (!KV_ATIVO || !redis) return null;
+  const ymd = hojeYMD();
+  const chave = `${KV_CHAVE}:bak:${ymd}`;
+  try { await redis.set(chave, DB); return chave; } catch (e) { return null; }
 }
 
 // Lê JSON removendo BOM (alguns editores/PowerShell gravam UTF-8 com BOM)
@@ -95,7 +114,113 @@ function salvarJSON(caminho, dados) {
     DB_SUJO = true;
     return;
   }
-  fs.writeFileSync(caminho, JSON.stringify(dados, null, 2), 'utf-8');
+  // ESCRITA ATÔMICA: grava num arquivo temporário e renomeia. Rename é atômico
+  // no SO, então nunca fica um .json truncado/corrompido se faltar luz ou o
+  // processo morrer no meio da escrita. Proteção direta contra perda de dados.
+  const tmp = `${caminho}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(dados, null, 2), 'utf-8');
+  fs.renameSync(tmp, caminho);
+  // Garante 1 backup por dia (a 1ª gravação do dia cria; as demais só checam).
+  try { backupDiarioLocal(); } catch { /* backup nunca pode quebrar uma gravação */ }
+}
+
+// ─── Backup / segurança dos dados ─────────────────────────────────────────────
+// Coleções que entram em export/import. settings FICA DE FORA (tem hash de
+// senha e segredo de sessão — nunca exportar credenciais num arquivo baixável).
+const COLECOES = {
+  ingredientes:       { file: INGREDIENTES_FILE, padrao: [] },
+  fichas:             { file: FICHAS_FILE,        padrao: [] },
+  custos_fixos:       { file: CUSTOS_FILE,        padrao: { meses: [] } },
+  fornecedores:       { file: FORNECEDORES_FILE,  padrao: [] },
+  movimentos_estoque: { file: MOVIMENTOS_FILE,    padrao: [] },
+  contagens:          { file: CONTAGENS_FILE,     padrao: { contagens: [] } },
+  caixa:              { file: CAIXA_FILE,          padrao: { lancamentos: [] } },
+  whatsapp_log:       { file: WHATS_LOG_FILE,     padrao: [] },
+};
+
+function hojeYMD() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
+// Lê TODAS as coleções (snapshot completo, sem settings).
+function exportarBanco() {
+  if (KV_ATIVO) {
+    const out = {};
+    for (const nome of Object.keys(COLECOES)) {
+      const v = DB[nome];
+      out[nome] = v === undefined ? COLECOES[nome].padrao : clonar(v);
+    }
+    return out;
+  }
+  const out = {};
+  for (const [nome, c] of Object.entries(COLECOES)) out[nome] = lerJSON(c.file, c.padrao);
+  return out;
+}
+
+// Grava as coleções recebidas (só as conhecidas). Retorna quantas escreveu.
+function importarBanco(dados) {
+  let n = 0;
+  for (const [nome, c] of Object.entries(COLECOES)) {
+    if (dados && Object.prototype.hasOwnProperty.call(dados, nome) && dados[nome] !== undefined) {
+      salvarJSON(c.file, dados[nome]);
+      n++;
+    }
+  }
+  return n;
+}
+
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+
+// Cria no máximo 1 backup por dia na pasta data/backups (modo local).
+function backupDiarioLocal() {
+  if (KV_ATIVO) return null;
+  if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const alvo = path.join(BACKUP_DIR, `backup-${hojeYMD()}.json`);
+  if (fs.existsSync(alvo)) return alvo; // já existe o de hoje
+  const pacote = { versao: 1, exportado_em: new Date().toISOString(), automatico: true, dados: exportarBanco() };
+  const tmp = `${alvo}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(pacote, null, 2), 'utf-8');
+  fs.renameSync(tmp, alvo);
+  rotacionarBackups(14); // mantém os últimos 14 dias
+  return alvo;
+}
+
+function rotacionarBackups(manter) {
+  try {
+    // só rotaciona os diários (backup-AAAA-MM-DD); o pré-restauração é fixo e fica.
+    const arquivos = fs.readdirSync(BACKUP_DIR).filter(f => /^backup-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
+    while (arquivos.length > manter) fs.unlinkSync(path.join(BACKUP_DIR, arquivos.shift()));
+  } catch { /* ignora */ }
+}
+
+// Snapshot SEMPRE gravado (nome fixo) logo antes de uma restauração, para
+// permitir desfazer a última restauração caso o arquivo importado fosse ruim.
+function backupPreRestauracaoLocal() {
+  if (KV_ATIVO) return null;
+  if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const alvo = path.join(BACKUP_DIR, 'backup-antes-de-restaurar.json');
+  const pacote = { versao: 1, exportado_em: new Date().toISOString(), motivo: 'pré-restauração', dados: exportarBanco() };
+  const tmp = `${alvo}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(pacote, null, 2), 'utf-8');
+  fs.renameSync(tmp, alvo);
+  return alvo;
+}
+
+// Status dos backups (para a auditoria e a tela de backup).
+function infoBackupLocal() {
+  if (KV_ATIVO) return { modo: 'kv', backups: [] };
+  let backups = [];
+  try {
+    if (fs.existsSync(BACKUP_DIR)) {
+      backups = fs.readdirSync(BACKUP_DIR)
+        .filter(f => /^backup-.*\.json$/.test(f)).sort().reverse()
+        .map(f => {
+          const st = fs.statSync(path.join(BACKUP_DIR, f));
+          return { arquivo: f, tamanho: st.size, data: st.mtime.toISOString() };
+        });
+    }
+  } catch { /* ignora */ }
+  return { modo: 'local', dir: BACKUP_DIR, backups };
 }
 
 // ─── Ingredientes ─────────────────────────────────────────────────────────────
@@ -300,6 +425,12 @@ module.exports = {
   KV_ATIVO,
   kvHydrate,
   kvFlush,
+  backupKV,
+  exportarBanco,
+  importarBanco,
+  backupDiarioLocal,
+  backupPreRestauracaoLocal,
+  infoBackupLocal,
   listarIngredientes,
   buscarIngredientePorId,
   buscarIngredientePorNome,

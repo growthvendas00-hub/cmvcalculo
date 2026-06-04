@@ -1433,3 +1433,25 @@ tbody tr { transition: background 0.14s; }
 .aud-alvo strong { color: var(--text); }
 .aud-sugestao { margin-top: 8px; font-size: 0.82rem; color: var(--text); background: rgba(39,174,96,0.08); border: 1px solid rgba(39,174,96,0.25); padding: 7px 10px; border-radius: 8px; line-height: 1.5; }
 .aud-corrigir { margin-top: 10px; }
+
+/* Aba interna (auditoria): escondida dos usuários; classe .tab[hidden] tem
+   prioridade sobre o display do .tab para nunca vazar na barra. */
+.tab[hidden] { display: none !important; }
+#tab-btn-auditoria:not([hidden]) {
+  border: 1px dashed var(--accent);
+  color: var(--accent);
+}
+
+/* ══════════════════════ BACKUP (painel interno) ══════════════════════ */
+.aud-interno-tag {
+  font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--accent); border: 1px dashed var(--accent); border-radius: 20px;
+  padding: 2px 8px; vertical-align: middle; margin-left: 8px;
+}
+.backup-painel { margin-bottom: 16px; border: 1px solid rgba(39,174,96,0.3); }
+.backup-painel-topo { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
+.backup-titulo { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+.backup-sub { font-size: 0.85rem; color: var(--text); line-height: 1.5; }
+.backup-acoes { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.backup-importar-btn { cursor: pointer; display: inline-flex; align-items: center; }
+.backup-dica { margin-top: 12px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; background: var(--surface2); padding: 9px 12px; border-radius: 8px; }

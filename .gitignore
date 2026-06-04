@@ -5,3 +5,7 @@ node_modules/
 
 # Credenciais locais (senha/segredo de sessão) — nunca versionar
 data/settings.json
+
+# Backups automáticos locais (cópias do banco) — não versionar
+data/backups/
+*.tmp

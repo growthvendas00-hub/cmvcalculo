@@ -1364,6 +1364,7 @@ const Auth = {
     document.getElementById('btn-logout').classList.remove('hidden');
     document.getElementById('btn-senha').classList.remove('hidden');
     if (!_appIniciado) { _appIniciado = true; Ingredientes.carregar().catch(()=>{}); }
+    checarHashAdmin(); // libera o painel interno se a URL tiver #auditoria
   },
   async setup(e) {
     e.preventDefault();
@@ -1596,11 +1597,65 @@ const Auditoria = {
       UI.toast(res.mensagem || 'Correção aplicada.');
       // Recarrega telas que podem ter mudado + a própria auditoria
       await Auditoria.carregar();
+      Backup.carregarInfo().catch(()=>{});
       Fichas.carregar?.().catch(()=>{});
     } catch (err) {
       UI.toast(err.erro || 'Erro ao corrigir.', 'erro');
       if (btn) { btn.disabled = false; btn.textContent = 'Corrigir automaticamente'; }
     }
+  },
+};
+
+// ── Backup / segurança dos dados (dentro do painel interno) ──
+const Backup = {
+  async carregarInfo() {
+    const el = document.getElementById('backup-status');
+    if (!el) return;
+    let info;
+    try { info = await API.get('/backup/info'); } catch { el.textContent = 'Não foi possível ler o estado do banco.'; return; }
+    const c = info.contagens || {};
+    const total = `${c.ingredientes||0} ingredientes · ${c.fichas||0} fichas · ${c.movimentos_estoque||0} movimentos · ${c.caixa||0} lançamentos`;
+    let onde;
+    if (info.kv_ativo) onde = '<strong style="color:var(--green)">Banco persistente (Vercel KV)</strong>';
+    else if (info.na_vercel) onde = '<strong style="color:var(--red)">⚠ Disco temporário SEM KV — risco de perda!</strong>';
+    else {
+      const b = (info.local && info.local.backups) || [];
+      const ult = b.length ? `último backup automático: ${Fmt.data(b[0].data)} (${b.length} guardados)` : 'sem backup automático ainda';
+      onde = `Arquivos locais · ${ult}`;
+    }
+    el.innerHTML = `${onde}<br><span style="color:var(--text-muted)">${total}</span>`;
+  },
+
+  async exportar() {
+    try {
+      const r = await fetch('/api/backup/exportar', { credentials: 'same-origin' });
+      if (r.status === 401) { Auth.exigirLogin(); return; }
+      if (!r.ok) throw 0;
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cmv-backup-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      UI.toast('Backup baixado. Guarde o arquivo num lugar seguro (Drive, e-mail).');
+      Backup.carregarInfo().catch(()=>{});
+    } catch { UI.toast('Erro ao gerar o backup.', 'erro'); }
+  },
+
+  async importar(input) {
+    const file = input.files && input.files[0];
+    input.value = ''; // permite re-selecionar o mesmo arquivo depois
+    if (!file) return;
+    if (!confirm('Restaurar vai SUBSTITUIR os dados atuais pelos do arquivo.\nO estado atual é salvo num backup antes. Continuar?')) return;
+    let pacote;
+    try { pacote = JSON.parse(await file.text()); }
+    catch { UI.toast('Arquivo inválido (não é um JSON de backup).', 'erro'); return; }
+    try {
+      const res = await API.post('/backup/restaurar', pacote);
+      UI.toast(res.mensagem || 'Backup restaurado.');
+      setTimeout(() => location.reload(), 900);
+    } catch (err) { UI.toast(err.erro || 'Erro ao restaurar.', 'erro'); }
   },
 };
 
@@ -1621,11 +1676,42 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (target === 'estoque') Estoque.carregar();
     if (target === 'historico') Historico.init();
     if (target === 'caixa') { Caixa.carregar(); Whats.carregarLog(); }
-    if (target === 'auditoria') Auditoria.carregar();
+    if (target === 'auditoria') { Auditoria.carregar(); Backup.carregarInfo(); }
   });
 });
 document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) m.classList.add('hidden'); });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// PAINEL INTERNO (AUDITORIA) — oculto dos usuários
+// A aba não aparece na barra. O dono/desenvolvedor abre por:
+//   • atalho de teclado  Ctrl+Shift+A
+//   • URL  .../#auditoria   (também #admin / #diagnostico)
+// Só funciona depois de logado.
+// ═══════════════════════════════════════════════════════════════
+const AdminTab = {
+  revelar(focar = true) {
+    if (!_appIniciado) return; // só após login
+    const btn = document.getElementById('tab-btn-auditoria');
+    if (!btn) return;
+    const estavaOculta = btn.hasAttribute('hidden');
+    btn.removeAttribute('hidden');
+    if (focar) {
+      btn.click();
+      if (estavaOculta) UI.toast('Painel interno de auditoria liberado (não visível aos usuários).', 'aviso');
+    }
+  },
+};
+function checarHashAdmin() {
+  if (/^#(auditoria|admin|diagnostico)$/i.test(location.hash || '')) AdminTab.revelar();
+}
+window.addEventListener('hashchange', checarHashAdmin);
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+    e.preventDefault();
+    AdminTab.revelar();
+  }
 });
 
 // Início: primeiro resolve a autenticação; o app só carrega após login.

@@ -10,6 +10,7 @@ const estoqueCore = require('../core/estoque');
 const caixaCore = require('../core/caixa');
 const historicoCore = require('../core/historico');
 const auditoriaCore = require('../core/auditoria');
+const backupCore = require('../core/backup');
 
 const RE_DATA = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -631,6 +632,32 @@ router.post('/auditoria/corrigir', (req, res) => {
   const r = auditoriaCore.corrigir((req.body && req.body.acao) || '');
   if (r.erro) return res.status(400).json(r);
   res.json(r);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO 9 — BACKUP / SEGURANÇA DOS DADOS (painel interno)
+// ═══════════════════════════════════════════════════════════════
+
+// Estado da persistência + backups existentes
+router.get('/backup/info', (req, res) => {
+  res.json(backupCore.info());
+});
+
+// Baixa um pacote com TODO o banco (menos credenciais) para guardar fora.
+router.get('/backup/exportar', async (req, res) => {
+  const pacote = backupCore.exportar();
+  if (storage.KV_ATIVO) { try { await storage.backupKV(); } catch (e) { /* segue */ } }
+  const nome = `cmv-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  res.setHeader('Content-Disposition', `attachment; filename="${nome}"`);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.json(pacote);
+});
+
+// Restaura a partir de um pacote (valida e guarda o estado atual antes).
+router.post('/backup/restaurar', async (req, res) => {
+  const r = await backupCore.restaurar(req.body);
+  if (r.erro) return res.status(400).json({ erro: r.erro });
+  res.json({ ...r, mensagem: `Backup restaurado (${r.colecoes_restauradas} coleção[ões]). Recarregue a página.` });
 });
 
 module.exports = router;

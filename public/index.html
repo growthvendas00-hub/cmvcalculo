@@ -56,7 +56,9 @@
   <button class="tab" data-tab="compras">Compras</button>
   <button class="tab" data-tab="caixa">Caixa Diário</button>
   <button class="tab" data-tab="custos">Custos Fixos</button>
-  <button class="tab" data-tab="auditoria">🔍 Auditoria</button>
+  <!-- Aba interna do dono/desenvolvedor: NÃO aparece para os usuários.
+       É revelada só pelo atalho Ctrl+Shift+A ou pela URL .../#auditoria -->
+  <button class="tab tab-oculta" id="tab-btn-auditoria" data-tab="auditoria" hidden>🔍 Auditoria</button>
 </nav>
 
 <!-- ══════════════════════ MÓDULO 1 — INGREDIENTES ══════════════════════ -->
@@ -526,8 +528,25 @@
 <!-- ══════════════════════ ABA: AUDITORIA TÉCNICA ══════════════════════ -->
 <section id="tab-auditoria" class="tab-content">
   <div class="section-header">
-    <h2>Auditoria Técnica</h2>
+    <h2>Auditoria Técnica <span class="aud-interno-tag">uso interno</span></h2>
     <button class="btn-primary" onclick="Auditoria.carregar()">🔄 Verificar agora</button>
+  </div>
+
+  <!-- Segurança dos dados: backup/restauração (cópia fora do servidor) -->
+  <div class="card backup-painel">
+    <div class="backup-painel-topo">
+      <div>
+        <div class="backup-titulo">🛡 Segurança dos dados</div>
+        <div class="backup-sub" id="backup-status">Carregando estado do banco…</div>
+      </div>
+      <div class="backup-acoes">
+        <button class="btn-primary" onclick="Backup.exportar()">⬇ Baixar backup</button>
+        <label class="btn-secondary backup-importar-btn">⬆ Restaurar backup
+          <input type="file" accept="application/json,.json" onchange="Backup.importar(this)" hidden />
+        </label>
+      </div>
+    </div>
+    <div class="backup-dica">Baixe um backup de vez em quando e guarde fora do computador (Google Drive, e-mail). Em caso de pane, "Restaurar backup" repõe tudo a partir do arquivo baixado.</div>
   </div>
 
   <div class="tutorial-box" id="tutorial-auditoria">

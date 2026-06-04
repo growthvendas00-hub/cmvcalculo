@@ -5,8 +5,10 @@ const PORT = process.env.PORT || 3001;
 
 app.set('trust proxy', 1); // honra x-forwarded-proto (Vercel) p/ cookie Secure
 
-// Captura o corpo cru (necessário para validar a assinatura HMAC do WhatsApp)
+// Captura o corpo cru (necessário para validar a assinatura HMAC do WhatsApp).
+// limit 8mb: backups de restauração podem ser maiores que o padrão (100kb).
 app.use(express.json({
+  limit: '8mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
 }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
