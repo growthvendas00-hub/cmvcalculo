@@ -519,6 +519,12 @@ router.get('/estoque/historico/comparar', (req, res) => {
   res.json(historicoCore.comparar(a, b));
 });
 
+// Quanto saiu (R$) do estoque num dia — saídas + consumo das contagens
+router.get('/estoque/consumo', (req, res) => {
+  const data = RE_DATA.test(req.query.data || '') ? req.query.data : historicoCore.hojeBR();
+  res.json(estoqueCore.consumoDoDia(data));
+});
+
 // Histórico de movimentações (todas ou de um ingrediente)
 router.get('/estoque/movimentos', (req, res) => {
   const { ingrediente_id } = req.query;

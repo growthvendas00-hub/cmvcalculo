@@ -1147,9 +1147,24 @@ const Estoque = {
       <div class="resumo-card"><div class="valor">${Fmt.moeda(data.valor_total_estoque)}</div><div class="label">Valor Parado em Estoque</div></div>
       <div class="resumo-card"><div class="valor">${data.total_itens}</div><div class="label">Itens no Estoque</div></div>
       <div class="resumo-card"><div class="valor" style="color:${precisaComprar?'var(--red)':'var(--green)'}">${precisaComprar}</div><div class="label">Precisa Comprar</div></div>
+      <div class="resumo-card"><div class="valor" id="resumo-saiu-hoje">—</div><div class="label">Saiu Hoje (R$)</div></div>
       <div class="resumo-card"><div class="valor" style="font-size:1.05rem">${ultimaTxt}</div><div class="label">Última Contagem</div></div>`;
 
-    // Lista de compras
+    // Saída rápida (baixa do quartinho em 2 toques)
+    const srBox = document.getElementById('saida-rapida-box');
+    if (_estoqueItens.length) {
+      srBox.style.display = 'block';
+      const sel = document.getElementById('sr-item');
+      const anterior = sel.value;
+      sel.innerHTML = '<option value="">— escolha o item —</option>' +
+        _estoqueItens.map(i => `<option value="${i.id}">${i.nome}</option>`).join('');
+      if (anterior && _estoqueItens.some(i => i.id === anterior)) sel.value = anterior;
+      Estoque.srTrocarItem();
+    } else {
+      srBox.style.display = 'none';
+    }
+
+    // Lista de compras (com sugestão de quanto comprar)
     const bloco = document.getElementById('estoque-compras-bloco');
     if (data.lista_compras.length) {
       bloco.style.display = 'block';
@@ -1158,9 +1173,11 @@ const Estoque = {
         const tag = i.situacao === 'zerado'
           ? '<span class="badge-estoque zerado">Sem estoque</span>'
           : '<span class="badge-estoque baixo">Abaixo do mínimo</span>';
-        const restante = i.minimo_base > 0
+        const sugestao = Estoque.sugestaoCompra(i);
+        const restante = (i.minimo_base > 0
           ? `tem ${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}, mínimo ${fmtQtd(i.minimo_exibicao, i.unidade_exibicao)}`
-          : `tem ${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}`;
+          : `tem ${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}`)
+          + (sugestao ? ` · <strong style="color:var(--accent)">comprar ≈ ${sugestao}</strong>` : '');
         return `<div class="lista-compras-item">
           <div><strong>${i.nome}</strong> ${tag}</div>
           <div style="color:var(--text-muted);font-size:0.8rem">${restante}</div>
@@ -1170,6 +1187,8 @@ const Estoque = {
     } else {
       bloco.style.display = 'none';
     }
+
+    Estoque.carregarConsumo();
 
     // Tabela completa
     const tbody = document.getElementById('lista-estoque');
@@ -1224,6 +1243,116 @@ const Estoque = {
         </tr></thead>
         <tbody>${linhas}</tbody>
       </table></div>`;
+  },
+
+  // ── Saída rápida (baixa do quartinho em 2 toques) ──
+  srTrocarItem() {
+    const id = document.getElementById('sr-item').value;
+    const i = _estoqueItens.find(x => x.id === id);
+    const unSel = document.getElementById('sr-unidade');
+    const info = document.getElementById('sr-info');
+    if (!i) { unSel.innerHTML = ''; info.textContent = ''; return; }
+    unSel.innerHTML = opcoesUnidadeIng(i, i.embalagem ? 'emb' : null);
+    const eqEmb = i.estoque_embalagem != null ? ` (≈ ${i.estoque_embalagem} ${i.embalagem.nome})` : '';
+    info.textContent = `Em estoque: ${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}${eqEmb}`;
+  },
+
+  async baixaRapida() {
+    const id = document.getElementById('sr-item').value;
+    const qtd = parseFloat(document.getElementById('sr-qtd').value);
+    const i = _estoqueItens.find(x => x.id === id);
+    if (!i) { UI.toast('Escolha o item que saiu.', 'erro'); return; }
+    if (!(qtd > 0)) { UI.toast('Informe a quantidade que saiu.', 'erro'); return; }
+    try {
+      const res = await API.post('/estoque/movimento', {
+        ingrediente_id: id,
+        tipo: 'saida',
+        quantidade: qtd,
+        unidade: document.getElementById('sr-unidade').value,
+        motivo: 'Saída rápida (uso na produção)',
+      });
+      document.getElementById('sr-qtd').value = '';
+      await Estoque.carregar(); // mantém o item selecionado e atualiza saldo/consumo
+      const ing = res.ingrediente;
+      const ex = EXIBICAO[ing.unidade_base] || { un: ing.unidade_base, fator: 1 };
+      const resta = (Number(ing.estoque_atual) || 0) / ex.fator;
+      UI.toast(`Baixa registrada — resta ${fmtQtd(resta, ex.un)} de ${ing.nome}.`);
+    } catch (err) { UI.toast(err.erro || 'Erro ao dar baixa.', 'erro'); }
+  },
+
+  // ── Lista de compras: sugestão de quantidade + copiar + WhatsApp ──
+  // Quanto falta para voltar ao mínimo, na medida em que a pessoa compra
+  // (embalagens quando houver, senão kg/L/un).
+  sugestaoCompra(i) {
+    const falta = Math.max((i.minimo_base || 0) - (i.estoque_base || 0), 0);
+    if (i.conteudo_embalagem_base > 0) {
+      const emb = Math.ceil((falta > 0 ? falta : (i.estoque_base > 0 ? 0 : i.conteudo_embalagem_base)) / i.conteudo_embalagem_base);
+      return emb > 0 ? `${emb} ${i.embalagem.nome}${emb > 1 ? 's' : ''}` : null;
+    }
+    if (falta > 0) {
+      const fator = i.fator_exibicao || 1;
+      return fmtQtd(Math.ceil((falta / fator) * 1000) / 1000, i.unidade_exibicao);
+    }
+    return null; // zerado sem mínimo: sem como sugerir quantidade
+  },
+
+  montarTextoListaCompras() {
+    const lista = _estoquePanorama?.lista_compras || [];
+    if (!lista.length) return null;
+    const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const linhas = lista.map(i => {
+      const tem = `tem ${fmtQtd(i.estoque_exibicao, i.unidade_exibicao)}`;
+      const sugestao = Estoque.sugestaoCompra(i);
+      return `• ${i.nome} — ${tem}${sugestao ? ` · comprar ≈ ${sugestao}` : ' · repor'}`;
+    });
+    return `🛒 LISTA DE COMPRAS — ${hoje}\n${linhas.join('\n')}`;
+  },
+
+  async copiarListaCompras() {
+    const texto = Estoque.montarTextoListaCompras();
+    if (!texto) { UI.toast('A lista de compras está vazia.', 'aviso'); return; }
+    try { await navigator.clipboard.writeText(texto); UI.toast('Lista copiada! Cole onde quiser (WhatsApp, bloco de notas…).'); }
+    catch { UI.toast('Não consegui copiar automaticamente — use o botão do WhatsApp.', 'erro'); }
+  },
+
+  zapListaCompras() {
+    const texto = Estoque.montarTextoListaCompras();
+    if (!texto) { UI.toast('A lista de compras está vazia.', 'aviso'); return; }
+    window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+  },
+
+  // ── Quanto saiu (R$) do estoque num dia ──
+  async carregarConsumo() {
+    const box = document.getElementById('consumo-dia-box');
+    if (!_estoqueItens.length) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    const input = document.getElementById('consumo-data');
+    const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    if (!input.value) input.value = hoje;
+    let c;
+    try { c = await API.get('/estoque/consumo?data=' + input.value); } catch { return; }
+    // Card "Saiu Hoje" do resumo (só reflete o dia atual)
+    if (input.value === hoje) {
+      const card = document.getElementById('resumo-saiu-hoje');
+      if (card) { card.textContent = Fmt.moeda(c.valor_total); card.style.color = c.valor_total > 0 ? 'var(--red)' : 'var(--green)'; }
+    }
+    const cont = document.getElementById('consumo-dia-conteudo');
+    if (!c.total_movimentos) {
+      cont.innerHTML = '<p class="empty" style="padding:14px !important">Nenhuma saída registrada nesse dia.</p>';
+      return;
+    }
+    const linhas = c.itens.map(i => `
+      <div class="consumo-item">
+        <span>${i.nome}</span>
+        <span style="color:var(--text-muted)">${fmtQtd(i.quantidade_exibicao, i.unidade_exibicao)}</span>
+        <strong style="color:var(--red)">${Fmt.moeda(i.valor)}</strong>
+      </div>`).join('');
+    const origem = c.valor_contagens > 0
+      ? `<small style="color:var(--text-muted)">Baixas: ${Fmt.moeda(c.valor_saidas)} · apurado na conferência: ${Fmt.moeda(c.valor_contagens)}</small>` : '';
+    cont.innerHTML = `
+      <div class="consumo-total">Saiu <strong>${Fmt.moeda(c.valor_total)}</strong> do estoque</div>
+      ${origem}
+      <div class="consumo-lista">${linhas}</div>`;
   },
 
   // ── Contagem do dia (inventário inicial + conferência) ──

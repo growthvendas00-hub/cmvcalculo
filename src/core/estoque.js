@@ -120,6 +120,7 @@ function aplicarMovimento({ ingrediente_id, tipo, quantidade, unidade, motivo })
     unidade_base: ing.unidade_base,
     estoque_antes: anterior,
     estoque_depois: novo,
+    custo_base: Number(ing.custo_base) || 0, // preço da época → consumo do dia exato
     motivo: (motivo || '').trim() || null,
     data: new Date().toISOString(),
   };
@@ -188,6 +189,7 @@ function registrarContagem({ itens, tipo, observacao }) {
       unidade_base: ing.unidade_base,
       estoque_antes: antes,
       estoque_depois: contadoBase,
+      custo_base, // preço da época → consumo do dia exato
       motivo: tipoFinal === 'inicial' ? 'Inventário inicial' : 'Conferência de fechamento',
       data: agora,
     });
@@ -258,6 +260,78 @@ function panorama() {
   };
 }
 
+// ───────────────────────────────────────────────────────────────
+// CONSUMO DO DIA — "quanto saiu (R$) do estoque hoje?"
+// Soma as SAÍDAS do dia + o consumo apurado nas CONTAGENS do dia
+// (quantidade_base negativa = sistema tinha mais do que o contado).
+// Ajustes ficam de fora: são correção de inventário, não consumo.
+// Valor usa o custo gravado no movimento (preço da época); movimentos
+// antigos sem esse campo usam o custo atual do ingrediente.
+// ───────────────────────────────────────────────────────────────
+const OFFSET_SP = '-03:00';
+
+function consumoDoDia(dataYMD) {
+  const inicio = new Date(`${dataYMD}T00:00:00.000${OFFSET_SP}`).getTime();
+  const fim = inicio + 24 * 60 * 60 * 1000;
+
+  const porIng = new Map(); // ingrediente_id → acumulado
+  let valor_saidas = 0, valor_contagens = 0, total_movimentos = 0;
+
+  for (const m of storage.listarMovimentos()) {
+    const t = new Date(m.data).getTime();
+    if (!(t >= inicio && t < fim)) continue;
+
+    let qtdSaiu = 0; // na unidade base, positivo = saiu
+    if (m.tipo === 'saida') qtdSaiu = Number(m.quantidade_base) || 0;
+    else if (m.tipo === 'contagem' && Number(m.quantidade_base) < 0) qtdSaiu = -Number(m.quantidade_base);
+    else continue;
+    if (!(qtdSaiu > 0)) continue;
+
+    const ing = storage.buscarIngredientePorId(m.ingrediente_id);
+    const custo = Number.isFinite(Number(m.custo_base)) && Number(m.custo_base) > 0
+      ? Number(m.custo_base)
+      : (Number(ing?.custo_base) || 0);
+    const valor = qtdSaiu * custo;
+
+    total_movimentos++;
+    if (m.tipo === 'saida') valor_saidas += valor; else valor_contagens += valor;
+
+    const chave = m.ingrediente_id;
+    const acc = porIng.get(chave) || {
+      ingrediente_id: chave,
+      nome: ing?.nome || m.ingrediente_nome || '(removido)',
+      unidade_base: m.unidade_base || ing?.unidade_base || 'g',
+      quantidade_base: 0,
+      valor: 0,
+    };
+    acc.quantidade_base += qtdSaiu;
+    acc.valor += valor;
+    porIng.set(chave, acc);
+  }
+
+  const itens = [...porIng.values()]
+    .map(i => {
+      const fator = exibFator(i.unidade_base);
+      return {
+        ...i,
+        quantidade_base: arredondar(i.quantidade_base, 3),
+        quantidade_exibicao: arredondar(i.quantidade_base / fator, 3),
+        unidade_exibicao: units.UNIDADE_EXIBICAO[i.unidade_base]?.unidade || i.unidade_base,
+        valor: arredondar(i.valor, 2),
+      };
+    })
+    .sort((a, b) => b.valor - a.valor);
+
+  return {
+    data: dataYMD,
+    valor_total: arredondar(valor_saidas + valor_contagens, 2),
+    valor_saidas: arredondar(valor_saidas, 2),
+    valor_contagens: arredondar(valor_contagens, 2),
+    total_movimentos,
+    itens,
+  };
+}
+
 module.exports = {
   estoqueAtual,
   estoqueMinimo,
@@ -265,4 +339,5 @@ module.exports = {
   aplicarMovimento,
   registrarContagem,
   panorama,
+  consumoDoDia,
 };

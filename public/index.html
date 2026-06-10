@@ -125,28 +125,52 @@
       <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-estoque')">Mostrar ▼</button>
     </div>
     <div class="tutorial-corpo collapsed">
-      <div class="tutorial-bloco">
-        <span class="tutorial-label">1º DIA — INVENTÁRIO INICIAL</span>
-        <p>Os itens vêm da aba <strong>Ingredientes</strong> (precisam ter preço para o valor sair certo). No primeiro dia você clica em <strong>Contagem do Dia</strong> e preenche <strong>quanto tem de cada um</strong>. Pronto: essa é a base.</p>
-      </div>
-      <div class="tutorial-bloco tutorial-info">
-        <span class="tutorial-label">TODO DIA — CONFERÊNCIA DE FECHAMENTO</span>
-        <p>No fim do expediente, abra a <strong>Contagem do Dia</strong> e digite o que <strong>sobrou na prateleira</strong>. O sistema calcula sozinho <strong>quanto saiu</strong> (vendas + perdas) e atualiza o valor do estoque. Compras feitas no dia já entram automático.</p>
-      </div>
-      <div class="tutorial-bloco tutorial-alerta">
-        <span class="tutorial-label">ESTOQUE MÍNIMO = LISTA DE COMPRAS</span>
-        <p>Defina o mínimo de cada item (ponto de reposição). Quando a contagem chega nesse nível, ele entra na <strong>Lista de Compras</strong> — você nunca fica na mão no meio do movimento.</p>
+      <div class="tutorial-bloco tutorial-info" style="flex-basis:100%">
+        <span class="tutorial-label">O FLUXO DO DIA A DIA</span>
+        <ol class="tutorial-passos">
+          <li><strong>Monte a base uma vez.</strong> Cadastre as compras na aba Ingredientes (cada compra já <strong>entra sozinha</strong> no estoque) ou faça o <strong>Inventário Inicial</strong> contando o que tem no quartinho.</li>
+          <li><strong>Saiu do quartinho? Dá a baixa na hora.</strong> Use a <strong>🚪 Saída rápida</strong> aqui em cima: escolhe o item, a quantidade (pode ser em latas/caixas) e pronto — 2 toques.</li>
+          <li><strong>Lista de compras automática.</strong> Defina o <strong>mínimo</strong> de cada item; quando o estoque chega lá (ou zera), ele entra na lista. Dá para <strong>copiar</strong> ou <strong>mandar no WhatsApp</strong> direto pro fornecedor/comprador.</li>
+          <li><strong>Quanto gastei hoje?</strong> O bloco <strong>💸 Quanto saiu no dia</strong> soma todas as baixas do dia em R$. E quando quiser conferir o físico, faça a <strong>Conferência de Fechamento</strong> — o sistema mostra a diferença.</li>
+        </ol>
       </div>
     </div>
+  </div>
+
+  <!-- Saída rápida: o item saiu do quartinho → baixa em 2 toques -->
+  <div class="saida-rapida" id="saida-rapida-box" style="display:none">
+    <div class="sr-titulo">🚪 Saída rápida <small>saiu do quartinho? registra aqui — sem abrir nada</small></div>
+    <div class="sr-form">
+      <select id="sr-item" onchange="Estoque.srTrocarItem()"></select>
+      <input id="sr-qtd" type="number" step="0.001" min="0.001" placeholder="Qtd"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();Estoque.baixaRapida()}" />
+      <select id="sr-unidade"></select>
+      <button type="button" class="btn-danger sr-btn" onclick="Estoque.baixaRapida()">− Dar baixa</button>
+    </div>
+    <small id="sr-info" class="sr-info"></small>
   </div>
 
   <div id="estoque-resumo" class="relatorio-resumo"></div>
 
   <div id="estoque-compras-bloco" style="display:none">
     <div class="lista-compras-box">
-      <div class="lista-compras-titulo">🛒 Precisa Comprar <span id="lista-compras-contagem"></span></div>
+      <div class="lista-compras-titulo">🛒 Precisa Comprar <span id="lista-compras-contagem"></span>
+        <span class="lc-acoes">
+          <button class="btn-secondary btn-mini" onclick="Estoque.copiarListaCompras()" title="Copia a lista pronta para colar onde quiser">📋 Copiar lista</button>
+          <button class="btn-secondary btn-mini" onclick="Estoque.zapListaCompras()" title="Abre o WhatsApp com a lista pronta para enviar">📲 Mandar no WhatsApp</button>
+        </span>
+      </div>
       <div id="lista-compras-itens"></div>
     </div>
+  </div>
+
+  <!-- Consumo do dia: quanto saiu (R$) do estoque na data escolhida -->
+  <div class="consumo-dia-box" id="consumo-dia-box" style="display:none">
+    <div class="consumo-dia-top">
+      <div class="lista-compras-titulo" style="margin:0">💸 Quanto saiu no dia</div>
+      <input type="date" id="consumo-data" onchange="Estoque.carregarConsumo()" />
+    </div>
+    <div id="consumo-dia-conteudo"></div>
   </div>
 
   <div class="card" style="margin-top:18px">
