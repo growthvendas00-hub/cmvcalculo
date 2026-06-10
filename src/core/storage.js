@@ -83,6 +83,10 @@ async function kvFlush() {
   await redis.set(KV_CHAVE, DB);
   DB_SUJO = false;
   DB_TINHA_DADOS = Object.keys(DB).length > 0;
+  // BACKUP AUTOMÁTICO DIÁRIO (modo KV): a 1ª gravação do dia guarda uma foto
+  // datada no próprio Redis — espelho do backupDiarioLocal. Nunca pode quebrar
+  // uma gravação, por isso o try/catch engole qualquer erro.
+  try { await backupDiarioKV(); } catch { /* backup nunca derruba um save */ }
 }
 
 // Backup no próprio KV: guarda a foto atual numa chave datada (durável).
@@ -91,6 +95,38 @@ async function backupKV() {
   const ymd = hojeYMD();
   const chave = `${KV_CHAVE}:bak:${ymd}`;
   try { await redis.set(chave, DB); return chave; } catch (e) { return null; }
+}
+
+// No máximo 1 backup automático por dia no KV, com rotação de 14 dias.
+// O marcador em memória evita conferir o Redis a cada flush; instâncias
+// serverless novas re-checam com EXISTS (idempotente — mesma chave do dia).
+let KV_BAK_DIA = null;
+async function backupDiarioKV() {
+  if (!KV_ATIVO || !redis) return null;
+  const ymd = hojeYMD();
+  if (KV_BAK_DIA === ymd) return null;
+  KV_BAK_DIA = ymd;
+  const chave = `${KV_CHAVE}:bak:${ymd}`;
+  const existe = await redis.exists(chave);
+  if (!existe) {
+    await redis.set(chave, DB);
+    // rotação: mantém só os 14 backups diários mais recentes
+    try {
+      const chaves = (await redis.keys(`${KV_CHAVE}:bak:*`))
+        .filter(c => /:\d{4}-\d{2}-\d{2}$/.test(c))
+        .sort();
+      while (chaves.length > 14) await redis.del(chaves.shift());
+    } catch { /* rotação é melhor-esforço */ }
+  }
+  return chave;
+}
+
+// Lista os backups existentes no KV (para a tela de backup/auditoria).
+async function listarBackupsKV() {
+  if (!KV_ATIVO || !redis) return [];
+  try {
+    return (await redis.keys(`${KV_CHAVE}:bak:*`)).sort().reverse();
+  } catch { return []; }
 }
 
 // Lê JSON removendo BOM (alguns editores/PowerShell gravam UTF-8 com BOM)
@@ -426,6 +462,8 @@ module.exports = {
   kvHydrate,
   kvFlush,
   backupKV,
+  backupDiarioKV,
+  listarBackupsKV,
   exportarBanco,
   importarBanco,
   backupDiarioLocal,

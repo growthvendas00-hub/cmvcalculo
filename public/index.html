@@ -48,14 +48,14 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab active" data-tab="ingredientes">Ingredientes</button>
-  <button class="tab" data-tab="estoque">Estoque</button>
-  <button class="tab" data-tab="historico">Histórico</button>
-  <button class="tab" data-tab="fichas">Fichas Técnicas</button>
-  <button class="tab" data-tab="relatorio">Relatório CMV</button>
-  <button class="tab" data-tab="compras">Compras</button>
-  <button class="tab" data-tab="caixa">Caixa Diário</button>
-  <button class="tab" data-tab="custos">Custos Fixos</button>
+  <button class="tab active" data-tab="ingredientes">🥩 Ingredientes</button>
+  <button class="tab" data-tab="estoque">📦 Estoque</button>
+  <button class="tab" data-tab="historico">🕐 Histórico</button>
+  <button class="tab" data-tab="fichas">📋 Fichas Técnicas</button>
+  <button class="tab" data-tab="relatorio">📊 Relatório CMV</button>
+  <button class="tab" data-tab="compras">🛒 Compras</button>
+  <button class="tab" data-tab="caixa">💰 Caixa Diário</button>
+  <button class="tab" data-tab="custos">🏠 Custos Fixos</button>
   <!-- Aba interna do dono/desenvolvedor: NÃO aparece para os usuários.
        É revelada só pelo atalho Ctrl+Shift+A ou pela URL .../#auditoria -->
   <button class="tab tab-oculta" id="tab-btn-auditoria" data-tab="auditoria" hidden>🔍 Auditoria</button>
@@ -241,15 +241,25 @@
     <div class="tutorial-corpo collapsed">
       <div class="tutorial-bloco">
         <span class="tutorial-label">O QUE É</span>
-        <p>A "receita" do produto: quais ingredientes entram, <strong>quanto de cada um</strong> (em gramas/ml/unidade), a embalagem e o <strong>Fator de Correção</strong> (perdas no preparo).</p>
+        <p>A "receita" do produto com custo: quais ingredientes entram e <strong>quanto de cada um em UMA porção</strong>. Com ela o sistema calcula quanto custa produzir e quanto sobra em cada venda.</p>
       </div>
       <div class="tutorial-bloco tutorial-info">
-        <span class="tutorial-label">PASSO A PASSO</span>
-        <p><strong>1.</strong> Dê um nome e o preço de venda → <strong>2.</strong> Adicione os ingredientes e pese cada um → <strong>3.</strong> Salve como rascunho → <strong>4.</strong> Clique em <strong>Confirmar</strong> para ver o CMV oficial.</p>
+        <span class="tutorial-label">PASSO A PASSO (ex.: Pizza de Calabresa)</span>
+        <ol class="tutorial-passos">
+          <li><strong>Nome, tipo e preço.</strong> Clique em <strong>+ Nova Ficha</strong>, escreva "Pizza de Calabresa", escolha o tipo 🍕 e o preço do seu cardápio (ex.: R$ 45,00).</li>
+          <li><strong>Adicione os ingredientes.</strong> Clique em <strong>+ Adicionar</strong> e escolha na lista. <strong>Não está na lista?</strong> Escolha <strong>"➕ Cadastrar novo ingrediente…"</strong> e preencha ali mesmo: nome, quanto pagou e por quanto (5 kg, 6 latas…). Não precisa sair da ficha.</li>
+          <li><strong>Informe as quantidades.</strong> Monte o produto UMA vez na bancada, pese cada item e anote em gramas/ml. Item comprado em lata/caixa? A dica mostra <em>"1 lata = 340 g"</em> — informe só os gramas que vão na porção (ex.: 30 g de milho).</li>
+          <li><strong>Acompanhe o CMV ao vivo.</strong> Enquanto preenche, o rodapé mostra o custo, o CMV% e quanto sobra por venda. <span style="color:var(--green)">Verde</span> = saudável (25–33%).</li>
+          <li><strong>Finalize.</strong> Clique em <strong>Salvar e Confirmar</strong> — o CMV vira oficial e entra no Relatório. Vai criar uma variação (outra pizza)? Use o botão <strong>Duplicar</strong> no card e troque só o que muda.</li>
+        </ol>
+      </div>
+      <div class="tutorial-bloco">
+        <span class="tutorial-label">RASCUNHO × CONFIRMADA</span>
+        <p><strong>Rascunho</strong> = ficha em edição, ainda fora do relatório. <strong>Confirmada</strong> = CMV oficial; quando você registrar uma compra com preço novo, o CMV dela <strong>recalcula sozinho</strong>.</p>
       </div>
       <div class="tutorial-bloco tutorial-alerta">
-        <span class="tutorial-label">FATOR DE CORREÇÃO</span>
-        <p>Carne na chapa perde ~15% → use <strong>1,15</strong>. Bacon perde gordura ~30% → <strong>1,30</strong>. Sem perda → <strong>1,00</strong>. É o que separa o custo "teórico" do <strong>custo real</strong>.</p>
+        <span class="tutorial-label">FATOR DE CORREÇÃO (perdas no preparo)</span>
+        <p>Carne na chapa perde ~15% → use <strong>1,15</strong>. Bacon perde gordura ~30% → <strong>1,30</strong>. Sem perda → <strong>1,00</strong>. É o que separa o custo "teórico" do <strong>custo real</strong>. Na dúvida, deixe 1,00 e ajuste depois.</p>
       </div>
     </div>
   </div>
@@ -357,8 +367,11 @@
   <div id="caixa-resumo" class="relatorio-resumo"></div>
   <div id="caixa-dias"></div>
 
-  <!-- WhatsApp: simulador + log -->
-  <div class="wa-bloco">
+  <!-- WhatsApp: simulador + log — OCULTO por enquanto (projeto futuro).
+       O backend (webhook + parser) continua funcionando; para reativar a
+       interface, remova o style="display:none" abaixo e devolva a chamada
+       Whats.carregarLog() na navegação da aba caixa (app.js). -->
+  <div class="wa-bloco" style="display:none">
     <div class="wa-cabecalho">
       <div class="wa-titulo">📲 Lançar pelo WhatsApp</div>
       <button class="tutorial-toggle" onclick="UI.toggleTutorial('tutorial-wa')" id="wa-toggle-btn">Mostrar ▼</button>
@@ -660,6 +673,12 @@
         Custo calculado: <strong id="compra-preview-valor">—</strong>
         <span class="custo-preview-alerta" id="compra-preview-alerta" style="display:none"></span>
       </div>
+
+      <label class="toggle-label" style="text-transform:none">
+        <input type="checkbox" id="compra-lancar-estoque" checked />
+        <span>Dar entrada desta compra no estoque</span>
+        <span class="dica-icone" data-dica="Marcado: a quantidade comprada soma no estoque automaticamente. Desmarque se você só quer registrar o PREÇO para calcular o CMV (ex.: cotação, ou item que ainda não chegou).">?</span>
+      </label>
       <div class="modal-actions">
         <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-compra')">Cancelar</button>
         <button type="submit" class="btn-primary">Salvar</button>
@@ -751,17 +770,17 @@
       <div class="form-row">
         <div class="form-group">
           <label class="campo-com-dica">Preço de Venda (R$) *<span class="dica-icone" data-dica="Preço que o cliente paga. Use o do seu cardápio. Pode simular outros valores para achar o preço ideal.">?</span></label>
-          <input id="ficha-preco" type="number" step="0.01" min="0.01" required placeholder="Ex: 35.00" />
+          <input id="ficha-preco" type="number" step="0.01" min="0.01" required placeholder="Ex: 35.00" oninput="Fichas.recalcularLive()" />
         </div>
         <div class="form-group">
           <label class="campo-com-dica">Custo da Embalagem (R$)<span class="dica-icone" data-dica="Some caixa + sacola + guardanapo + palito do pedido. No delivery isso pesa muito. Ex: caixa 0,60 + sacola 0,30 + guardanapo 0,05 = R$ 0,95.">?</span></label>
-          <input id="ficha-embalagem" type="number" step="0.01" min="0" value="0" placeholder="Ex: 1.50" />
+          <input id="ficha-embalagem" type="number" step="0.01" min="0" value="0" placeholder="Ex: 1.50" oninput="Fichas.recalcularLive()" />
           <small class="campo-hint">Caixa + sacola + descartáveis do pedido</small>
         </div>
       </div>
 
       <label class="toggle-label">
-        <input type="checkbox" id="ficha-rateio" />
+        <input type="checkbox" id="ficha-rateio" onchange="Fichas.recalcularLive()" />
         <span>Incluir Rateio de Custos Fixos no CMV</span>
         <span class="dica-icone" data-dica="Soma a parcela de custos fixos (aluguel, salários, etc.) do mês mais recente. Mostra o CMV REAL — maior, porém verdadeiro.">?</span>
       </label>
@@ -780,11 +799,84 @@
         <div id="ingredientes-lista-ficha">
           <div class="ingrediente-vazio">Nenhum ingrediente — clique em "+ Adicionar"</div>
         </div>
+
+        <!-- Cadastro rápido: cria o ingrediente sem sair da ficha (estoque opcional) -->
+        <div id="ficha-novo-ing" class="novo-ing-box" style="display:none">
+          <div class="novo-ing-titulo">➕ Cadastrar ingrediente sem sair da ficha</div>
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label>Nome do ingrediente *</label>
+              <input id="ni-nome" type="text" placeholder="Ex: Milho Verde" />
+            </div>
+            <div class="form-group">
+              <label class="campo-com-dica">Paguei (R$) *<span class="dica-icone" data-dica="Valor TOTAL da compra (ou o preço de mercado, se ainda não comprou). O sistema calcula o custo por g/ml/un sozinho.">?</span></label>
+              <input id="ni-valor" type="number" step="0.01" min="0.01" placeholder="Ex: 42.90" oninput="NovoIngrediente.preview()" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="campo-com-dica">Por quanto *<span class="dica-icone" data-dica="O que veio por esse valor. Ex: 5 kg → digite 5 e escolha kg. Comprou latas/caixas? Escolha a última opção.">?</span></label>
+              <input id="ni-qtd" type="number" step="0.001" min="0.001" placeholder="Ex: 5" oninput="NovoIngrediente.preview()" />
+            </div>
+            <div class="form-group">
+              <label>Unidade *</label>
+              <select id="ni-unidade" onchange="NovoIngrediente.trocarUnidade()">
+                <option value="kg">kg — quilograma</option>
+                <option value="g">g — grama</option>
+                <option value="L">L — litro</option>
+                <option value="ml">ml — mililitro</option>
+                <option value="un">un — unidade (peça)</option>
+                <option value="emb">📦 lata / caixa / pacote…</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row" id="ni-emb-campos" style="display:none">
+            <div class="form-group">
+              <label>Nome da embalagem</label>
+              <input id="ni-emb-nome" type="text" placeholder="Ex: lata" />
+            </div>
+            <div class="form-group">
+              <label class="campo-com-dica">Cada uma tem *<span class="dica-icone" data-dica="Quanto vem DENTRO de 1 embalagem, na unidade que você USA na receita. Ex: lata de milho de 340 g → 340 e g. Na ficha você informa só os gramas usados.">?</span></label>
+              <input id="ni-emb-conteudo" type="number" step="0.001" min="0.001" placeholder="Ex: 340" oninput="NovoIngrediente.preview()" />
+            </div>
+            <div class="form-group">
+              <label>Unidade</label>
+              <select id="ni-emb-unidade" onchange="NovoIngrediente.preview()">
+                <option value="g">g</option><option value="kg">kg</option>
+                <option value="ml">ml</option><option value="L">L</option>
+                <option value="un">un</option>
+              </select>
+            </div>
+          </div>
+          <div class="custo-preview" id="ni-preview" style="display:none">
+            Custo calculado: <strong id="ni-preview-valor">—</strong>
+          </div>
+          <label class="toggle-label" style="text-transform:none">
+            <input type="checkbox" id="ni-estoque" />
+            <span>Dar entrada desta compra no estoque</span>
+            <span class="dica-icone" data-dica="Desmarcado: só registra o PREÇO para o CMV — o estoque não muda em nada. Marque apenas se o item realmente chegou e deve somar no estoque.">?</span>
+          </label>
+          <div class="novo-ing-acoes">
+            <button type="button" class="btn-secondary" onclick="NovoIngrediente.fechar()">Cancelar</button>
+            <button type="button" class="btn-confirm" onclick="NovoIngrediente.salvar()">Salvar ingrediente</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prévia do CMV ao vivo: atualiza enquanto preenche -->
+      <div id="ficha-cmv-live" class="cmv-live" style="display:none">
+        <div class="cmv-live-grid">
+          <div><span>Custo do produto</span><strong id="fl-custo">—</strong></div>
+          <div><span>CMV</span><strong id="fl-cmv">—</strong></div>
+          <div><span>Sobra por venda</span><strong id="fl-margem" style="color:var(--green)">—</strong></div>
+        </div>
+        <small id="fl-aviso"></small>
       </div>
 
       <div class="modal-actions">
         <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-ficha')">Cancelar</button>
-        <button type="submit" class="btn-primary">Salvar Rascunho</button>
+        <button type="submit" class="btn-secondary" title="Guarda a ficha para terminar depois — ainda não entra no relatório">Salvar Rascunho</button>
+        <button type="submit" class="btn-primary" onclick="Fichas._confirmarAoSalvar=true" title="Salva e já oficializa o CMV — a ficha entra no relatório">Salvar e Confirmar ✓</button>
       </div>
     </form>
   </div>

@@ -291,7 +291,7 @@ function executar() {
   if (binfo.na_vercel && !binfo.kv_ativo) {
     P('critico', 'Segurança dos dados', 'Rodando na nuvem SEM banco persistente (KV)', 'O disco da Vercel é temporário: sem o Vercel KV conectado, os dados podem sumir a qualquer momento. Conecte o KV (Upstash) e faça Redeploy.', { sugestao: 'Vercel → Storage → KV → Connect → Redeploy.' });
   } else if (binfo.kv_ativo) {
-    P('info', 'Segurança dos dados', 'Dados no Vercel KV (durável)', 'O banco está num KV persistente. Ainda assim, baixe um backup de tempos em tempos (botão Exportar) e guarde fora do servidor.', {});
+    P('info', 'Segurança dos dados', 'Dados no Vercel KV (durável) + backup diário automático', 'O banco está num KV persistente e a 1ª gravação de cada dia guarda uma foto datada no próprio Redis (rotação de 14 dias). Ainda assim, baixe um backup de tempos em tempos (botão Exportar) e guarde fora do servidor.', {});
   } else {
     // modo local: checa os backups automáticos
     const ultimos = (binfo.local && binfo.local.backups) || [];

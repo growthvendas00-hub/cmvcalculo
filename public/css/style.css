@@ -524,6 +524,40 @@ form { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
 .btn-remover:hover { background: rgba(231,76,60,0.1); }
 .ingrediente-vazio { color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 20px; }
 
+/* Dica por linha da ficha: embalagem (1 lata = 340 g) + custo da porção */
+.ing-info { display: block; margin-top: 4px; font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; }
+
+/* Prévia do CMV ao vivo no modal da ficha */
+.cmv-live {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 14px;
+}
+.cmv-live-grid { display: flex; gap: 28px; flex-wrap: wrap; }
+.cmv-live-grid span {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 2px;
+}
+.cmv-live-grid strong { font-size: 1.05rem; color: var(--accent); }
+.cmv-live small { display: block; margin-top: 8px; color: var(--yellow); font-size: 0.75rem; line-height: 1.5; }
+
+/* Cadastro rápido de ingrediente dentro da ficha */
+.novo-ing-box {
+  background: var(--surface2);
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  padding: 14px;
+  margin-top: 10px;
+}
+.novo-ing-titulo { font-size: 0.85rem; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
+.novo-ing-acoes { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
 /* ─── Relatório ───────────────────────────────────────────────── */
 .relatorio-resumo {
   display: grid;
@@ -1455,3 +1489,60 @@ tbody tr { transition: background 0.14s; }
 .backup-acoes { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .backup-importar-btn { cursor: pointer; display: inline-flex; align-items: center; }
 .backup-dica { margin-top: 12px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; background: var(--surface2); padding: 9px 12px; border-radius: 8px; }
+
+/* ════════════════════════════════════════════════════════════════
+   POLISH DE UX/UI — refinos visuais aditivos (não alteram layout)
+   ════════════════════════════════════════════════════════════════ */
+
+/* Scrollbar discreta no tema escuro */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4060; }
+
+/* Botão primário com leve profundidade */
+.btn-primary {
+  background: linear-gradient(180deg, #ffb83d 0%, var(--accent) 100%);
+  box-shadow: 0 2px 10px rgba(245,166,35,0.22);
+  transition: opacity 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.btn-primary:hover { opacity: 0.94; box-shadow: 0 4px 16px rgba(245,166,35,0.32); transform: translateY(-1px); }
+
+/* Campos ganham um brilho suave ao focar (mais fácil de ver onde está) */
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(245,166,35,0.12);
+  outline: none;
+}
+
+/* Cards de ficha "levantam" ao passar o mouse */
+.ficha-card { transition: transform 0.16s, border-color 0.16s, box-shadow 0.16s; }
+.ficha-card:hover { transform: translateY(-2px); border-color: rgba(245,166,35,0.45); box-shadow: var(--shadow); }
+
+/* Modais com fundo desfocado (destaca o conteúdo) */
+.modal { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+
+/* Passo a passo numerado dos tutoriais */
+.tutorial-passos { margin: 8px 0 0; padding: 0; list-style: none; counter-reset: passo; display: flex; flex-direction: column; gap: 9px; }
+.tutorial-passos li { counter-increment: passo; position: relative; padding-left: 34px; line-height: 1.6; }
+.tutorial-passos li::before {
+  content: counter(passo);
+  position: absolute; left: 0; top: 1px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(245,166,35,0.14);
+  border: 1px solid rgba(245,166,35,0.4);
+  color: var(--accent);
+  font-weight: 800; font-size: 0.72rem;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Estado vazio com chamada para ação */
+.empty-acao {
+  text-align: center;
+  padding: 44px 20px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  font-size: 0.9rem; line-height: 1.6;
+}

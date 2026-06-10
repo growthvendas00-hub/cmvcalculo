@@ -157,9 +157,12 @@ const UI = {
     const c = corpo.classList.toggle('collapsed');
     btn.textContent = c ? 'Mostrar ▼' : 'Ocultar ▲';
   },
-  abrirModalFicha(ficha = null) {
+  async abrirModalFicha(ficha = null) {
+    // Garante a lista de ingredientes fresca (a aba Fichas pode ser a primeira aberta)
+    try { _ingredientes = await API.get('/ingredientes'); } catch {}
     const form = document.getElementById('form-ficha');
     form.reset();
+    NovoIngrediente.fechar();
     document.getElementById('ficha-rateio').checked = false;
     document.getElementById('ingredientes-lista-ficha').innerHTML =
       '<div class="ingrediente-vazio">Nenhum ingrediente — clique em "+ Adicionar"</div>';
@@ -179,6 +182,7 @@ const UI = {
       document.getElementById('modal-ficha-titulo').textContent = 'Nova Ficha Técnica';
       document.getElementById('ficha-id').value = '';
     }
+    Fichas.recalcularLive();
     UI.abrirModal('modal-ficha');
   },
 };
@@ -337,6 +341,7 @@ const Ingredientes = {
       nome: document.getElementById('compra-nome').value,
       fornecedor: document.getElementById('compra-fornecedor').value,
       valor_total: parseFloat(document.getElementById('compra-valor').value),
+      lancar_estoque: document.getElementById('compra-lancar-estoque').checked,
     };
     if (id) body.id = id;
     if (modo === 'embalagem') {
@@ -497,7 +502,13 @@ const Fichas = {
   async carregar() {
     const fichas = await API.get('/fichas');
     const cont = document.getElementById('lista-fichas');
-    if (!fichas.length) { cont.innerHTML = '<p class="empty" style="width:100%">Nenhuma ficha técnica criada</p>'; return; }
+    if (!fichas.length) {
+      cont.innerHTML = `<div class="empty-acao" style="width:100%">
+        <p>Nenhuma ficha técnica ainda. A ficha é a "receita com custo" de cada produto do cardápio.</p>
+        <button class="btn-primary" onclick="UI.abrirModalFicha()">+ Criar minha primeira ficha</button>
+      </div>`;
+      return;
+    }
     cont.innerHTML = fichas.map(f => Fichas.card(f)).join('');
   },
   card(f) {
@@ -524,35 +535,102 @@ const Fichas = {
           ? `<button class="btn-confirm" onclick="Fichas.confirmar('${f.id}')">Confirmar</button>`
           : `<button class="btn-secondary" style="font-size:0.78rem;padding:5px 10px" onclick="Fichas.rascunho('${f.id}')">Voltar a Rascunho</button>`}
         <button class="btn-edit" onclick="Fichas.editar('${f.id}')">Editar</button>
+        <button class="btn-edit" onclick="Fichas.duplicar('${f.id}')" title="Cria uma cópia para ajustar — ótimo para variações (ex: outra pizza)">Duplicar</button>
         <button class="btn-danger" onclick="Fichas.excluir('${f.id}','${nomeJS}')">Excluir</button>
       </div></div>`;
   },
   adicionarLinha(item = null) {
     const cont = document.getElementById('ingredientes-lista-ficha');
     cont.querySelector('.ingrediente-vazio')?.remove();
-    const opts = _ingredientes.map(i => {
-      const aviso = i.custo_base > 0 ? '' : ' ⚠ sem preço';
-      return `<option value="${i.id}" data-base="${i.unidade_base}" ${item?.ingrediente_id===i.id?'selected':''}>${i.nome} (${i.unidade_base})${aviso}</option>`;
-    }).join('');
-    const baseSel = item ? (_ingredientes.find(i=>i.id===item.ingrediente_id)?.unidade_base || 'g') : 'g';
     const div = document.createElement('div');
     div.className = 'ingrediente-linha';
     div.innerHTML = `
       <div><label>Ingrediente *</label>
-        <select class="ing-select" required onchange="Fichas.atualizarRotuloQtd(this)">
-          <option value="">— selecione —</option>${opts}
-        </select></div>
-      <div><label class="lbl-qtd">Quantidade (${baseSel})</label>
-        <input type="number" class="ing-qtd" step="0.01" min="0.01" value="${item?.quantidade||''}" required placeholder="Ex: 150" /></div>
+        <select class="ing-select" required onchange="Fichas.aoTrocarIngrediente(this)"></select>
+        <small class="ing-info"></small></div>
+      <div><label class="lbl-qtd">Quantidade</label>
+        <input type="number" class="ing-qtd" step="0.01" min="0.01" value="${item?.quantidade||''}" required placeholder="Ex: 150" oninput="Fichas.aoEditarLinha(this)" /></div>
       <div><label>Fator Correção</label>
-        <input type="number" class="ing-fator" step="0.01" min="1" max="3" value="${item?.fator_correcao||1.00}" /></div>
-      <button type="button" class="btn-remover" onclick="this.parentElement.remove()" title="Remover">✕</button>`;
+        <input type="number" class="ing-fator" step="0.01" min="1" max="3" value="${item?.fator_correcao||1.00}" oninput="Fichas.aoEditarLinha(this)" /></div>
+      <button type="button" class="btn-remover" onclick="this.parentElement.remove();Fichas.recalcularLive()" title="Remover">✕</button>`;
     cont.appendChild(div);
+    Fichas.popularSelect(div.querySelector('.ing-select'), item?.ingrediente_id || '');
+    Fichas.atualizarLinha(div);
   },
-  atualizarRotuloQtd(sel) {
-    const base = sel.selectedOptions[0]?.dataset.base || 'g';
-    const lbl = sel.closest('.ingrediente-linha').querySelector('.lbl-qtd');
-    if (lbl) lbl.textContent = `Quantidade (${base})`;
+  // Monta as opções do seletor de ingrediente (com atalho de cadastro rápido)
+  popularSelect(sel, selecionado = '') {
+    const opts = _ingredientes.map(i => {
+      const aviso = i.custo_base > 0 ? '' : ' ⚠ sem preço';
+      return `<option value="${i.id}">${i.nome} (${i.unidade_base})${aviso}</option>`;
+    }).join('');
+    sel.innerHTML = `<option value="">— selecione —</option>
+      <option value="__novo__">➕ Cadastrar novo ingrediente…</option>${opts}`;
+    sel.value = selecionado || '';
+  },
+  aoTrocarIngrediente(sel) {
+    if (sel.value === '__novo__') {
+      sel.value = '';
+      NovoIngrediente.abrir(sel.closest('.ingrediente-linha'));
+      return;
+    }
+    Fichas.atualizarLinha(sel.closest('.ingrediente-linha'));
+    Fichas.recalcularLive();
+  },
+  aoEditarLinha(el) {
+    Fichas.atualizarLinha(el.closest('.ingrediente-linha'));
+    Fichas.recalcularLive();
+  },
+  // Atualiza rótulo da quantidade + dica da linha (embalagem e custo da porção)
+  atualizarLinha(div) {
+    const ing = _ingredientes.find(i => i.id === div.querySelector('.ing-select').value);
+    const lbl = div.querySelector('.lbl-qtd');
+    const info = div.querySelector('.ing-info');
+    if (!ing) { lbl.textContent = 'Quantidade'; info.textContent = ''; return; }
+    lbl.textContent = `Quantidade (${ing.unidade_base})`;
+    const partes = [];
+    if (ing.embalagem) {
+      partes.push(`📦 1 ${ing.embalagem.nome} = ${ing.embalagem.conteudo} ${ing.embalagem.unidade} — aqui informe só os ${ing.unidade_base} usados`);
+    }
+    const qtd = parseFloat(div.querySelector('.ing-qtd').value);
+    const fator = parseFloat(div.querySelector('.ing-fator').value) || 1;
+    if (!(ing.custo_base > 0)) partes.push('⚠ sem preço — o CMV não fecha sem ele');
+    else if (qtd > 0) partes.push(`custa ≈ ${Fmt.moeda(ing.custo_base * qtd * fator)} nesta porção`);
+    info.textContent = partes.join(' · ');
+  },
+  // Prévia do CMV ao vivo (sem rateio — esse entra no Confirmar)
+  recalcularLive() {
+    const bar = document.getElementById('ficha-cmv-live');
+    if (!bar) return;
+    let custo = 0, linhas = 0, semPreco = false;
+    document.querySelectorAll('#ingredientes-lista-ficha .ingrediente-linha').forEach(d => {
+      const ing = _ingredientes.find(i => i.id === d.querySelector('.ing-select').value);
+      const qtd = parseFloat(d.querySelector('.ing-qtd').value);
+      if (!ing || !(qtd > 0)) return;
+      const fator = parseFloat(d.querySelector('.ing-fator').value) || 1;
+      linhas++;
+      if (ing.custo_base > 0) custo += ing.custo_base * qtd * fator;
+      else semPreco = true;
+    });
+    if (!linhas) { bar.style.display = 'none'; return; }
+    const total = custo + (parseFloat(document.getElementById('ficha-embalagem').value) || 0);
+    document.getElementById('fl-custo').textContent = Fmt.moeda(total);
+    const preco = parseFloat(document.getElementById('ficha-preco').value);
+    const elCmv = document.getElementById('fl-cmv');
+    const elMargem = document.getElementById('fl-margem');
+    if (preco > 0) {
+      const pct = (total / preco) * 100;
+      elCmv.textContent = Fmt.pct(pct);
+      elCmv.style.color = pct <= 33 ? 'var(--green)' : pct <= 35 ? 'var(--yellow)' : 'var(--red)';
+      elMargem.textContent = Fmt.moeda(preco - total);
+    } else {
+      elCmv.textContent = '—'; elCmv.style.color = '';
+      elMargem.textContent = '—';
+    }
+    const avisos = [];
+    if (semPreco) avisos.push('⚠ Há ingrediente sem preço — o valor acima está incompleto.');
+    if (document.getElementById('ficha-rateio').checked) avisos.push('Prévia sem o rateio de custos fixos (ele entra ao Confirmar).');
+    document.getElementById('fl-aviso').textContent = avisos.join(' ');
+    bar.style.display = 'block';
   },
   coletar() {
     return [...document.querySelectorAll('#ingredientes-lista-ficha .ingrediente-linha')].map(d => ({
@@ -561,8 +639,11 @@ const Fichas = {
       fator_correcao: parseFloat(d.querySelector('.ing-fator').value || 1.0),
     }));
   },
+  _confirmarAoSalvar: false, // setado pelo botão "Salvar e Confirmar"
   async salvar(e) {
     e.preventDefault();
+    const confirmarDepois = Fichas._confirmarAoSalvar;
+    Fichas._confirmarAoSalvar = false;
     const id = document.getElementById('ficha-id').value;
     const ingredientes = Fichas.coletar();
     if (!ingredientes.length) { UI.toast('Adicione ao menos um ingrediente.', 'erro'); return; }
@@ -576,13 +657,37 @@ const Fichas = {
       ingredientes,
     };
     try {
-      if (id) { await API.put('/fichas/' + id, body); UI.toast('Ficha atualizada (voltou a rascunho).'); }
-      else { await API.post('/fichas', body); UI.toast('Ficha criada. Revise e clique em Confirmar.'); }
+      let fichaSalva;
+      if (id) { const r = await API.put('/fichas/' + id, body); fichaSalva = r.ficha; }
+      else { const r = await API.post('/fichas', body); fichaSalva = r.ficha; }
       UI.fecharModal('modal-ficha');
-      await Fichas.carregar();
+      if (confirmarDepois && fichaSalva) {
+        // confirmar() já recarrega a lista, mostra o CMV oficial ou os erros
+        await Fichas.confirmar(fichaSalva.id);
+      } else {
+        await Fichas.carregar();
+        UI.toast(id ? 'Ficha atualizada (voltou a rascunho).' : 'Rascunho salvo. Quando terminar, clique em Confirmar.');
+      }
     } catch (err) { UI.toast(err.erro || 'Erro ao salvar ficha.', 'erro'); }
   },
   async editar(id) { UI.abrirModalFicha(await API.get('/fichas/' + id)); },
+  // Duplica uma ficha (ex: pizza nova = copiar a anterior e trocar 2 ingredientes)
+  async duplicar(id) {
+    try {
+      const f = await API.get('/fichas/' + id);
+      const res = await API.post('/fichas', {
+        nome: f.nome + ' (cópia)',
+        tipo: f.tipo,
+        preco_venda: f.preco_venda,
+        custo_embalagem: f.custo_embalagem,
+        incluir_rateio: f.incluir_rateio,
+        ingredientes: f.ingredientes,
+      });
+      await Fichas.carregar();
+      UI.toast('Cópia criada — ajuste o que mudou e confirme.');
+      UI.abrirModalFicha(res.ficha);
+    } catch (err) { UI.toast(err.erro || 'Erro ao duplicar.', 'erro'); }
+  },
   async confirmar(id) {
     try {
       const res = await API.post('/fichas/' + id + '/confirmar');
@@ -656,6 +761,99 @@ const Fichas = {
     await API.delete('/fichas/' + id);
     await Fichas.carregar();
     UI.toast('Ficha excluída.');
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
+// CADASTRO RÁPIDO DE INGREDIENTE (dentro do modal da ficha)
+// Cria o ingrediente com preço SEM sair da ficha; lançar no estoque
+// é opcional (desmarcado por padrão — o CMV não depende do estoque).
+// ═══════════════════════════════════════════════════════════════
+const NovoIngrediente = {
+  _linha: null, // linha da ficha que pediu o cadastro
+
+  abrir(linha) {
+    NovoIngrediente._linha = linha || null;
+    ['ni-nome','ni-valor','ni-qtd','ni-emb-nome','ni-emb-conteudo'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('ni-unidade').value = 'kg';
+    document.getElementById('ni-emb-unidade').value = 'g';
+    document.getElementById('ni-estoque').checked = false;
+    NovoIngrediente.trocarUnidade();
+    const box = document.getElementById('ficha-novo-ing');
+    box.style.display = 'block';
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document.getElementById('ni-nome').focus();
+  },
+  fechar() {
+    document.getElementById('ficha-novo-ing').style.display = 'none';
+    NovoIngrediente._linha = null;
+  },
+  trocarUnidade() {
+    const emb = document.getElementById('ni-unidade').value === 'emb';
+    document.getElementById('ni-emb-campos').style.display = emb ? 'flex' : 'none';
+    NovoIngrediente.preview();
+  },
+  preview() {
+    const valor = parseFloat(document.getElementById('ni-valor').value);
+    const qtd = parseFloat(document.getElementById('ni-qtd').value);
+    const un = document.getElementById('ni-unidade').value;
+    const prev = document.getElementById('ni-preview');
+    let custoBase = null, base = null;
+    if (valor > 0 && qtd > 0) {
+      if (un === 'emb') {
+        const conteudo = parseFloat(document.getElementById('ni-emb-conteudo').value);
+        const unC = document.getElementById('ni-emb-unidade').value;
+        if (conteudo > 0) { custoBase = valor / (qtd * paraBase(conteudo, unC)); base = UNIDADES[unC].base; }
+      } else {
+        custoBase = valor / paraBase(qtd, un);
+        base = UNIDADES[un].base;
+      }
+    }
+    if (custoBase !== null && isFinite(custoBase)) {
+      document.getElementById('ni-preview-valor').textContent = Fmt.custoUnit(custoBase, base);
+      prev.style.display = 'block';
+    } else prev.style.display = 'none';
+  },
+  async salvar() {
+    const nome = document.getElementById('ni-nome').value.trim();
+    const valor = parseFloat(document.getElementById('ni-valor').value);
+    const qtd = parseFloat(document.getElementById('ni-qtd').value);
+    const un = document.getElementById('ni-unidade').value;
+    if (!nome) { UI.toast('Dê um nome ao ingrediente.', 'erro'); return; }
+    if (!(valor > 0) || !(qtd > 0)) { UI.toast('Informe quanto pagou e por quanto (quantidade).', 'erro'); return; }
+    const body = { nome, valor_total: valor, lancar_estoque: document.getElementById('ni-estoque').checked };
+    if (un === 'emb') {
+      const conteudo = parseFloat(document.getElementById('ni-emb-conteudo').value);
+      if (!(conteudo > 0)) { UI.toast('Informe quanto vem dentro de cada embalagem (ex: 340 g).', 'erro'); return; }
+      body.modo = 'embalagem';
+      body.embalagem_nome = document.getElementById('ni-emb-nome').value.trim() || 'embalagem';
+      body.quantidade_embalagens = qtd;
+      body.conteudo = conteudo;
+      body.unidade_conteudo = document.getElementById('ni-emb-unidade').value;
+    } else {
+      body.unidade_compra = un;
+      body.quantidade_comprada = qtd;
+    }
+    try {
+      const res = await API.post('/ingredientes', body);
+      const novo = res.ingrediente;
+      const i = _ingredientes.findIndex(x => x.id === novo.id);
+      if (i >= 0) _ingredientes[i] = novo; else _ingredientes.push(novo);
+      // Re-popula todos os seletores da ficha preservando o que já estava escolhido
+      document.querySelectorAll('#ingredientes-lista-ficha .ing-select')
+        .forEach(s => Fichas.popularSelect(s, s.value));
+      const linha = NovoIngrediente._linha;
+      NovoIngrediente.fechar();
+      if (linha && document.body.contains(linha)) {
+        linha.querySelector('.ing-select').value = novo.id;
+        Fichas.atualizarLinha(linha);
+        linha.querySelector('.ing-qtd').focus();
+      }
+      Fichas.recalcularLive();
+      UI.toast(`"${novo.nome}" cadastrado${body.lancar_estoque ? ' e lançado no estoque' : ' (estoque não foi alterado)'}.`);
+    } catch (err) { UI.toast(err.erro || 'Erro ao cadastrar ingrediente.', 'erro'); }
   },
 };
 
@@ -1616,7 +1814,11 @@ const Backup = {
     const c = info.contagens || {};
     const total = `${c.ingredientes||0} ingredientes · ${c.fichas||0} fichas · ${c.movimentos_estoque||0} movimentos · ${c.caixa||0} lançamentos`;
     let onde;
-    if (info.kv_ativo) onde = '<strong style="color:var(--green)">Banco persistente (Vercel KV)</strong>';
+    if (info.kv_ativo) {
+      const baks = (info.kv && info.kv.backups) || [];
+      const ult = baks.length ? ` · backup diário automático no Redis (${baks.length} guardados, último: ${baks[0].split(':').pop()})` : ' · backup diário automático ativo (1ª gravação do dia)';
+      onde = `<strong style="color:var(--green)">Banco persistente (Vercel KV)</strong>${ult}`;
+    }
     else if (info.na_vercel) onde = '<strong style="color:var(--red)">⚠ Disco temporário SEM KV — risco de perda!</strong>';
     else {
       const b = (info.local && info.local.backups) || [];
@@ -1675,7 +1877,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (target === 'compras') Compras.carregar();
     if (target === 'estoque') Estoque.carregar();
     if (target === 'historico') Historico.init();
-    if (target === 'caixa') { Caixa.carregar(); Whats.carregarLog(); }
+    if (target === 'caixa') { Caixa.carregar(); } // Whats.carregarLog() desativado — WhatsApp é projeto futuro (bloco oculto no HTML)
     if (target === 'auditoria') { Auditoria.carregar(); Backup.carregarInfo(); }
   });
 });

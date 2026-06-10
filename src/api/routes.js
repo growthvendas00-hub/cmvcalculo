@@ -639,8 +639,12 @@ router.post('/auditoria/corrigir', (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 // Estado da persistência + backups existentes
-router.get('/backup/info', (req, res) => {
-  res.json(backupCore.info());
+router.get('/backup/info', async (req, res) => {
+  const info = backupCore.info();
+  if (storage.KV_ATIVO) {
+    info.kv = { backups: await storage.listarBackupsKV() };
+  }
+  res.json(info);
 });
 
 // Baixa um pacote com TODO o banco (menos credenciais) para guardar fora.
