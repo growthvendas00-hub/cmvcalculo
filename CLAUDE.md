@@ -82,6 +82,12 @@ Sistema de CMV/estoque/caixa para hamburgueria/pizzaria. Node + Express + HTML/C
 - **Aba Auditoria é interna** — nunca colocá-la de volta na barra visível dos usuários (`#tab-btn-auditoria` deve ficar `hidden`).
 - Use a **aba Auditoria** após mudanças grandes: detecta o clássico "lata contada inteira", erros de integridade e risco de perda de dados, com correção automática segura.
 
+## Atualizações recentes (junho/2026)
+Três levas de melhorias, todas commitadas e em produção:
+1. **Ficha técnica fácil + CMV desacoplado do estoque** (`92390a8`): cadastro rápido de ingrediente dentro da ficha (estoque opcional), prévia de CMV ao vivo, dica de embalagem por linha, botão Duplicar, checkbox "dar entrada no estoque" na compra.
+2. **UX/auditoria/backup** (mesmo commit): botão Salvar e Confirmar, tutorial das fichas passo-a-passo, backup diário automático no KV, WhatsApp oculto da UI (projeto futuro), polish visual (emojis nas abas, hovers, focus, blur).
+3. **Estoque no fluxo do cliente** (`dd22a64`): Saída rápida (baixa em 2 toques), lista de compras com sugestão de quantidade + copiar/WhatsApp, "Quanto saiu no dia" (R$ por data, custo da época gravado no movimento), tutorial do estoque em 4 passos. Testado de ponta a ponta como usuário real; auditoria final 0 críticos/0 avisos.
+
 ## Pendências / próximos passos naturais
 - WhatsApp é **projeto futuro** (UI oculta; reativar = remover display:none do `.wa-bloco` + devolver `Whats.carregarLog()` na nav). Falta entender embalagem ("comprei milho 6 latas 30").
 - CMV real × teórico (vendas do cardápio × fichas × consumo do estoque → desperdício).
