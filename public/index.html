@@ -966,14 +966,14 @@
     </div>
     <form id="form-preparo" onsubmit="Preparos.salvar(event)">
       <input type="hidden" id="pr-id" />
-      <p class="modal-explica">Costela desfiada, abacaxi caramelizado, molho da casa… Monte a receita <strong>uma vez</strong>: o preparo vira um <strong>ingrediente</strong> para usar nas fichas, com custo por g/ml calculado sozinho — e atualizado automaticamente quando o preço de um insumo muda.</p>
+      <p class="modal-explica">Costela desfiada, abacaxi caramelizado, molho da casa, massa de pizza (rende X discos), calda do açaí… Monte a receita <strong>uma vez</strong>: o preparo vira um <strong>ingrediente</strong> para usar nas fichas, com custo calculado sozinho — e atualizado automaticamente quando o preço de um insumo muda.</p>
       <div class="form-row">
         <div class="form-group" style="flex:2">
           <label>Nome do preparo *</label>
           <input id="pr-nome" type="text" placeholder="Ex: Costela desfiada" required />
         </div>
         <div class="form-group">
-          <label class="campo-com-dica">Usa em<span class="dica-icone" data-dica="Como você mede o preparo ao montar o lanche: pesando → g, líquido → ml, porção fechada → un.">?</span></label>
+          <label class="campo-com-dica">Usa em<span class="dica-icone" data-dica="Como você mede o preparo ao montar o produto: pesando → g, líquido → ml, porção fechada (disco de massa, hambúrguer moldado) → un.">?</span></label>
           <select id="pr-unidade" onchange="Preparos.trocarUnidade()">
             <option value="g">g — grama</option>
             <option value="ml">ml — mililitro</option>
@@ -997,7 +997,7 @@
 
       <div class="form-row">
         <div class="form-group">
-          <label class="campo-com-dica">Rende (depois de pronto) *<span class="dica-icone" data-dica="Quanto a receita rende DEPOIS de pronta — pese o resultado final. Ex.: 3 kg de costela crua viram ≈ 1,4 kg desfiada → digite 1,4 e escolha kg. A perda do cozimento já entra no custo sozinha.">?</span></label>
+          <label class="campo-com-dica">Rende (depois de pronto) *<span class="dica-icone" data-dica="Quanto a receita rende DEPOIS de pronta. Ex.: 3 kg de costela crua → 1,4 kg desfiada (digite 1,4 kg) · massa de pizza → 10 discos (digite 10 un). A perda do preparo já entra no custo sozinha.">?</span></label>
           <input id="pr-rend" type="number" step="0.001" min="0.001" placeholder="Ex: 800" required oninput="Preparos.recalcLive()" />
         </div>
         <div class="form-group">

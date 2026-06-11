@@ -57,6 +57,17 @@ const INGREDIENTES_PADRAO = [
     { nome: 'Molho Barbecue', base: 'g', dica: 'Burgers e porções.' },
     { nome: 'Azeite de Oliva', base: 'ml', dica: 'Finalização. 5-10ml por pizza.' },
   ]},
+  { categoria: '🍨 Açaí e Sobremesas', itens: [
+    { nome: 'Açaí (polpa)', base: 'g', dica: 'Comprado em balde/pote? Cadastre "Por embalagem" (1 balde = X g) e use por g no copo.' },
+    { nome: 'Leite Condensado', base: 'g', dica: 'Lata tem 395 g — cadastre por embalagem e informe só os g usados.' },
+    { nome: 'Leite em Pó', base: 'g', dica: 'Cobertura clássica do açaí.' },
+    { nome: 'Biscoito Disquete', base: 'un', dica: 'Conta por unidade no copo (ex.: 3 un).' },
+    { nome: 'Granola', base: 'g', dica: 'Pese a porção uma vez e padronize.' },
+    { nome: 'Paçoca', base: 'un', dica: 'Por unidade. Se esfarela e você pesa, use o conversor ⚖️ para g.' },
+    { nome: 'Creme de Avelã', base: 'g', dica: 'Custo alto — controle a pesagem da porção.' },
+    { nome: 'Banana', base: 'un', dica: 'Por unidade; se preferir pesar, o ⚖️ converte para g.' },
+    { nome: 'Morango', base: 'g', dica: 'Preço varia com a safra — registre cada compra.' },
+  ]},
   { categoria: '📦 Embalagens e Descartáveis', itens: [
     { nome: 'Caixa de Pizza', base: 'un', dica: 'Essencial no delivery. Personalize com sua marca.' },
     { nome: 'Caixa de Hamburguer', base: 'un', dica: 'Embalagem de marca justifica preço premium.' },
@@ -618,9 +629,9 @@ const Fichas = {
     }
     const qtd = parseFloat(div.querySelector('.ing-qtd').value);
     const fator = parseFloat(div.querySelector('.ing-fator').value) || 1;
-    if (ing.unidade_base === 'un' && !ing.receita) {
+    if (ing.unidade_base === 'un') {
       partes.push('1 = unidade inteira · 0,5 = metade');
-      if (qtd > 10) partes.push(`⚠ ${qtd} unidades inteiras? Se você quis dizer GRAMAS, converta aqui →`);
+      if (!ing.receita && qtd > 10) partes.push(`⚠ ${qtd} unidades inteiras? Se você quis dizer GRAMAS, converta aqui →`);
     }
     if (!(ing.custo_base > 0)) partes.push('⚠ sem preço — o CMV não fecha sem ele');
     else if (qtd > 0) partes.push(`custa ≈ ${Fmt.moeda(ing.custo_base * qtd * fator)} nesta porção`);

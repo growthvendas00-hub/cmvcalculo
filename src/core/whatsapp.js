@@ -38,8 +38,10 @@ function normalizar(s) {
 // Valor em R$ a partir de texto (aceita 1850 / 1.850,50 / 1850,50 / R$ 120)
 function extrairValor(texto) {
   // procura números que NÃO estejam colados a uma unidade (kg/g/l/ml/un)
+  // nem dentro de palavra/fração de nome ("Carne 80/20", "X2") — senão o
+  // dígito do NOME do item viraria valor de caixa/compra.
   const limpo = texto.replace(/r\$\s*/gi, ' ');
-  const re = /(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\s*(?:kg|g|l|ml|un|und|unid))/gi;
+  const re = /(?<![\w/])(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\s*(?:kg|g|l|ml|un|und|unid))(?![\w/])/gi;
   const achados = [...limpo.matchAll(re)].map(m => m[1]);
   if (!achados.length) return null;
   // pega o último número "solto" (geralmente o valor vem por último)
@@ -56,16 +58,39 @@ function paraNumero(bruto) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Quantidade + unidade (5kg, 500 g, 2un, 1l, 750ml)
+// Palavras genéricas de embalagem (sem acento — o texto já vem normalizado).
+// Além destas, os NOMES de embalagem cadastrados nos ingredientes também
+// são reconhecidos (ex.: "bisnaga" se o cliente cadastrou assim).
+const EMB_PALAVRAS = [
+  'lata', 'latas', 'caixa', 'caixas', 'pacote', 'pacotes', 'pe', 'pes',
+  'maco', 'macos', 'peca', 'pecas', 'balde', 'baldes', 'fardo', 'fardos',
+  'pote', 'potes', 'garrafa', 'garrafas', 'saco', 'sacos', 'bandeja',
+  'bandejas', 'duzia', 'duzias', 'disco', 'discos', 'cabeca', 'cabecas',
+  'embalagem', 'embalagens',
+];
+
+// Quantidade + unidade (5kg, 500 g, 2un, 1l, 750ml, 2 latas, 1 pe…)
 function extrairQuantidade(texto) {
-  const re = /(\d+(?:[.,]\d+)?)\s*(kg|g|l|ml|un|und|unid|unidades?)\b/i;
-  const m = normalizar(texto).match(re);
-  if (!m) return null;
-  const valor = paraNumero(m[1]);
-  let un = m[2].toLowerCase();
-  if (un === 'l') un = 'L';
-  if (un.startsWith('un')) un = 'un';
-  return { quantidade: valor, unidade: un, original: m[0] };
+  const norm = normalizar(texto);
+  const re = /(?<![\w/])(\d+(?:[.,]\d+)?)\s*(kg|g|l|ml|un|und|unid|unidades?)\b/i;
+  const m = norm.match(re);
+  if (m) {
+    const valor = paraNumero(m[1]);
+    let un = m[2].toLowerCase();
+    if (un === 'l') un = 'L';
+    if (un.startsWith('un')) un = 'un';
+    return { quantidade: valor, unidade: un, original: m[0] };
+  }
+  // Embalagens: "comprei milho 6 latas 30", "baixa alface 2 pes"
+  const nomes = new Set(EMB_PALAVRAS);
+  for (const i of storage.listarIngredientes()) {
+    const n = i.embalagem && normalizar(i.embalagem.nome || '');
+    if (n) { nomes.add(n); nomes.add(n + 's'); }
+  }
+  const alt = [...nomes].sort((a, b) => b.length - a.length).map(escaparRegex).join('|');
+  const me = norm.match(new RegExp(`(?<![\\w/])(\\d+(?:[.,]\\d+)?)\\s*(${alt})\\b`));
+  if (!me) return null;
+  return { quantidade: paraNumero(me[1]), unidade: 'emb', rotulo: me[2], original: me[0] };
 }
 
 // Escapa caracteres especiais para uso seguro dentro de uma RegExp
@@ -135,7 +160,14 @@ function lancarCaixa(tipo, valor, categoria, descricao) {
 }
 
 function ehDimensaoCompativel(ing, unidade) {
+  if (unidade === 'emb') return units.conteudoBaseEmbalagem(ing.embalagem) > 0;
   return units.existeUnidade(unidade) && units.unidadeBase(unidade) === ing.unidade_base;
+}
+
+// Rótulo da unidade para a resposta ("2kg" / "2 latas" / "2 pés")
+function rotuloQtd(qtd, ing) {
+  if (qtd.unidade !== 'emb') return `${qtd.quantidade}${qtd.unidade}`;
+  return `${qtd.quantidade} ${qtd.rotulo || (ing.embalagem && ing.embalagem.nome) || 'embalagem(ns)'}`;
 }
 
 function processarMensagem(texto, de) {
@@ -165,6 +197,9 @@ function processarMensagem(texto, de) {
         (storage.listarIngredientes().map(i => i.nome).slice(0, 12).join(', ') || 'nenhum'), false, 'item_nao_encontrado');
     }
     if (!ehDimensaoCompativel(ing, qtd.unidade)) {
+      if (qtd.unidade === 'emb') {
+        return responder(`⚠️ Não sei quanto tem em 1 ${qtd.rotulo} de "${ing.nome}". Cadastre a embalagem do item no sistema (Editar ingrediente → "compro por embalagem") e mande de novo.`, false, 'embalagem_desconhecida');
+      }
       return responder(`⚠️ "${ing.nome}" é medido em ${ing.unidade_base}. Use uma unidade compatível (ex.: ${unidadesSugeridas(ing.unidade_base)}).`, false, 'unidade_incompativel');
     }
 
@@ -186,12 +221,12 @@ function processarMensagem(texto, de) {
     if (/baixa|perd|quebr|estragou|jogue?i|venceu|vencido|sai(u|ram)/.test(t)) {
       const r = estoqueCore.aplicarMovimento({ ingrediente_id: ing.id, tipo: 'saida', quantidade: qtd.quantidade, unidade: qtd.unidade, motivo: motivoLivre(original, ing, qtd) || 'Baixa (WhatsApp)' });
       if (r.erro) return responder('⚠️ ' + r.erro, false, 'erro');
-      return responder(`✅ ➖ Baixa de ${qtd.quantidade}${qtd.unidade} em ${ing.nome}. Sobrou ${qtdExib(r.ingrediente.estoque_atual, ing.unidade_base)}.`, true, 'baixa');
+      return responder(`✅ ➖ Baixa de ${rotuloQtd(qtd, ing)} em ${ing.nome}. Sobrou ${qtdExib(r.ingrediente.estoque_atual, ing.unidade_base)}.`, true, 'baixa');
     }
     // ENTRADA (chegou mercadoria, sem valor)
     const r = estoqueCore.aplicarMovimento({ ingrediente_id: ing.id, tipo: 'entrada', quantidade: qtd.quantidade, unidade: qtd.unidade, motivo: 'Entrada (WhatsApp)' });
     if (r.erro) return responder('⚠️ ' + r.erro, false, 'erro');
-    return responder(`✅ ➕ Entrada de ${qtd.quantidade}${qtd.unidade} em ${ing.nome}. Estoque: ${qtdExib(r.ingrediente.estoque_atual, ing.unidade_base)}.`, true, 'entrada_estoque');
+    return responder(`✅ ➕ Entrada de ${rotuloQtd(qtd, ing)} em ${ing.nome}. Estoque: ${qtdExib(r.ingrediente.estoque_atual, ing.unidade_base)}.`, true, 'entrada_estoque');
   }
 
   // 3) Consultas (sem número)
@@ -217,22 +252,39 @@ function processarMensagem(texto, de) {
 }
 
 function registrarCompra(ing, qtd, valor) {
-  const custo_base = cmvCore.calcularCustoBase(valor, qtd.quantidade, qtd.unidade);
-  const registro = {
-    data: new Date().toISOString(), fornecedor: 'WhatsApp', unidade_compra: qtd.unidade,
-    quantidade_comprada: qtd.quantidade, valor_total: valor, custo_base,
-  };
+  let custo_base, registro;
+  if (qtd.unidade === 'emb') {
+    // Compra por embalagem: "comprei milho 6 latas 30" → custo por g/ml
+    const conteudoBase = units.conteudoBaseEmbalagem(ing.embalagem);
+    custo_base = cmvCore.arredondar(valor / (qtd.quantidade * conteudoBase), 6);
+    registro = {
+      data: new Date().toISOString(), fornecedor: 'WhatsApp',
+      modo: 'embalagem', embalagem: ing.embalagem, quantidade_embalagens: qtd.quantidade,
+      quantidade_comprada: qtd.quantidade, unidade_compra: ing.embalagem.nome,
+      valor_total: valor, custo_base,
+    };
+    ing.unidade_compra = ing.embalagem.nome;
+  } else {
+    custo_base = cmvCore.calcularCustoBase(valor, qtd.quantidade, qtd.unidade);
+    registro = {
+      data: new Date().toISOString(), fornecedor: 'WhatsApp', unidade_compra: qtd.unidade,
+      quantidade_comprada: qtd.quantidade, valor_total: valor, custo_base,
+    };
+    ing.unidade_compra = qtd.unidade;
+  }
   ing.custo_base = custo_base;
-  ing.unidade_compra = qtd.unidade;
   ing.historico = [...(ing.historico || []), registro];
   ing.ultima_atualizacao = new Date().toISOString();
   storage.salvarIngrediente(ing);
   const fichas = cmvCore.propagarPreco(ing.id);
+  const preparosCore = require('./preparos');
+  const preps = preparosCore.recalcularPreparosComIngrediente(ing.id);
   const r = estoqueCore.aplicarMovimento({ ingrediente_id: ing.id, tipo: 'entrada', quantidade: qtd.quantidade, unidade: qtd.unidade, motivo: 'Compra (WhatsApp)' });
   const estoqueTxt = r.ingrediente ? ` Estoque: ${qtdExib(r.ingrediente.estoque_atual, ing.unidade_base)}.` : '';
   const ex = units.exibicao(custo_base, ing.unidade_base);
-  const fichasTxt = fichas && fichas.length ? `\n🔄 CMV recalculado: ${fichas.join(', ')}.` : '';
-  return `✅ 🛒 Compra: ${ing.nome} ${qtd.quantidade}${qtd.unidade} por ${moeda(valor)} (${moeda(ex.valor)}/${ex.unidade}).${estoqueTxt}${fichasTxt}`;
+  const recalcs = [...(fichas || []), ...(preps || [])];
+  const fichasTxt = recalcs.length ? `\n🔄 Custos recalculados: ${recalcs.join(', ')}.` : '';
+  return `✅ 🛒 Compra: ${ing.nome} ${rotuloQtd(qtd, ing)} por ${moeda(valor)} (${moeda(ex.valor)}/${ex.unidade}).${estoqueTxt}${fichasTxt}`;
 }
 
 function consultaCaixa() {
@@ -281,7 +333,7 @@ function motivoLivre(texto, ing, qtd) {
 function ajuda() {
   return '🍔 *Comandos do CMV pelo WhatsApp*\n\n' +
     '💰 *Caixa*\n• entrou 1850 vendas\n• saiu 600 fornecedor\n• saiu 300 salário\n\n' +
-    '📦 *Estoque*\n• comprei carne 5kg 120  (preço + entrada)\n• entrou carne 5kg  (chegou mercadoria)\n• baixa carne 2kg quebra  (perda)\n• contei carne 5kg  (contagem)\n\n' +
+    '📦 *Estoque*\n• comprei carne 5kg 120  (preço + entrada)\n• comprei milho 6 latas 30  (por embalagem)\n• entrou carne 5kg  (chegou mercadoria)\n• baixa alface 2 pés quebra  (perda)\n• contei carne 5kg  (contagem)\n\n' +
     '📊 *Consultas*\n• caixa  (resultado do dia)\n• estoque  (valor + o que comprar)\n\n' +
     'Dica: o nome do item precisa estar cadastrado no sistema.';
 }
