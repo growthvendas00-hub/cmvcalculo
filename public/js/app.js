@@ -225,17 +225,27 @@ const Ingredientes = {
         : `<span class="badge-sem-preco">⚠ Sem preço</span>`;
       const ultima = ing.historico?.length ? Fmt.data(ing.historico[ing.historico.length-1].data) : '—';
       const nomeJS = ing.nome.replace(/'/g, "\\'");
-      const embTag = ing.embalagem
-        ? `<span class="emb-tag" title="Comprado por embalagem">📦 ${ing.embalagem.nome} = ${ing.embalagem.conteudo} ${ing.embalagem.unidade}</span>` : '';
+      const ehPreparo = !!ing.receita;
+      const embTag = ehPreparo
+        ? `<span class="emb-tag prep-tag" title="Preparo — o custo é calculado pela receita e atualizado quando o preço de um insumo muda">🍳 preparo</span>`
+        : (ing.embalagem
+          ? `<span class="emb-tag" title="Comprado por embalagem">📦 ${ing.embalagem.nome} = ${ing.embalagem.conteudo} ${ing.embalagem.unidade}</span>` : '');
+      // Item de unidade que talvez seja usado pesando (alface, costela…)
+      const btnConverter = (!ehPreparo && ing.unidade_base === 'un')
+        ? `<button class="btn-edit" onclick="ConverterUn.abrir('${ing.id}')" title="Compra por unidade mas usa pesando? Converte preço, estoque e fichas para gramas de uma vez">⚖️ Usar por peso</button>` : '';
+      const acoes = ehPreparo
+        ? `<button class="btn-edit" onclick="Preparos.editar('${ing.id}')">Receita</button>
+           <button class="btn-confirm" onclick="Preparos.producao('${ing.id}','${nomeJS}')" title="Dá entrada do rendimento no estoque e baixa os ingredientes usados">Produzi uma leva</button>
+           <button class="btn-danger" onclick="Ingredientes.excluir('${ing.id}','${nomeJS}')">Excluir</button>`
+        : `<button class="${temPreco ? 'btn-edit' : 'btn-confirm'}" onclick="Ingredientes.registrarPreco('${ing.id}')">${temPreco ? 'Nova Compra' : 'Registrar Preço'}</button>
+           ${btnConverter}
+           <button class="btn-edit" onclick="Ingredientes.editar('${ing.id}')">Editar</button>
+           <button class="btn-danger" onclick="Ingredientes.excluir('${ing.id}','${nomeJS}')">Excluir</button>`;
       return `<tr>
         <td data-label="Ingrediente"><strong>${ing.nome}</strong> <small style="color:var(--text-muted)">(usa em ${ing.unidade_base})</small> ${embTag}</td>
         <td data-label="Custo Atual">${custo}</td>
         <td data-label="Última Compra" style="color:var(--text-muted)">${ultima}</td>
-        <td class="cell-acoes" data-label="Ações"><div class="acoes-cell">
-          <button class="${temPreco ? 'btn-edit' : 'btn-confirm'}" onclick="Ingredientes.registrarPreco('${ing.id}')">${temPreco ? 'Nova Compra' : 'Registrar Preço'}</button>
-          <button class="btn-edit" onclick="Ingredientes.editar('${ing.id}')">Editar</button>
-          <button class="btn-danger" onclick="Ingredientes.excluir('${ing.id}','${nomeJS}')">Excluir</button>
-        </div></td>
+        <td class="cell-acoes" data-label="Ações"><div class="acoes-cell">${acoes}</div></td>
       </tr>`;
     }).join('');
   },
@@ -298,9 +308,21 @@ const Ingredientes = {
     UI.abrirModal('modal-compra');
   },
 
+  // Atalho do hint: muda para "Por embalagem" (alface, costela — compra por unidade, usa por peso)
+  usarModoEmbalagem() {
+    Ingredientes._setModo('embalagem');
+    const nome = document.getElementById('compra-emb-nome');
+    nome.placeholder = 'Ex: pé, maço, peça';
+    nome.focus();
+  },
+
   atualizarPreviewCompra() {
     const modo = document.querySelector('input[name="compra-modo"]:checked').value;
     const valor = parseFloat(document.getElementById('compra-valor').value);
+    // Dica para item comprado por unidade que talvez seja usado pesando
+    const hintUn = document.getElementById('compra-un-hint');
+    if (hintUn) hintUn.style.display =
+      (modo === 'medida' && document.getElementById('compra-unidade').value === 'un') ? 'block' : 'none';
     const prev = document.getElementById('compra-preview');
     const alerta = document.getElementById('compra-preview-alerta');
     alerta.style.display = 'none';
@@ -561,7 +583,8 @@ const Fichas = {
   popularSelect(sel, selecionado = '') {
     const opts = _ingredientes.map(i => {
       const aviso = i.custo_base > 0 ? '' : ' ⚠ sem preço';
-      return `<option value="${i.id}">${i.nome} (${i.unidade_base})${aviso}</option>`;
+      const prefixo = i.receita ? '🍳 ' : '';
+      return `<option value="${i.id}">${prefixo}${i.nome} (${i.unidade_base})${aviso}</option>`;
     }).join('');
     sel.innerHTML = `<option value="">— selecione —</option>
       <option value="__novo__">➕ Cadastrar novo ingrediente…</option>${opts}`;
@@ -580,7 +603,8 @@ const Fichas = {
     Fichas.atualizarLinha(el.closest('.ingrediente-linha'));
     Fichas.recalcularLive();
   },
-  // Atualiza rótulo da quantidade + dica da linha (embalagem e custo da porção)
+  // Atualiza rótulo da quantidade + dica da linha (embalagem, preparo,
+  // custo da porção e atalho de conversão para itens medidos em "un")
   atualizarLinha(div) {
     const ing = _ingredientes.find(i => i.id === div.querySelector('.ing-select').value);
     const lbl = div.querySelector('.lbl-qtd');
@@ -588,14 +612,30 @@ const Fichas = {
     if (!ing) { lbl.textContent = 'Quantidade'; info.textContent = ''; return; }
     lbl.textContent = `Quantidade (${ing.unidade_base})`;
     const partes = [];
+    if (ing.receita) partes.push('🍳 preparo da casa — custo vem da receita');
     if (ing.embalagem) {
       partes.push(`📦 1 ${ing.embalagem.nome} = ${ing.embalagem.conteudo} ${ing.embalagem.unidade} — aqui informe só os ${ing.unidade_base} usados`);
     }
     const qtd = parseFloat(div.querySelector('.ing-qtd').value);
     const fator = parseFloat(div.querySelector('.ing-fator').value) || 1;
+    if (ing.unidade_base === 'un' && !ing.receita) {
+      partes.push('1 = unidade inteira · 0,5 = metade');
+      if (qtd > 10) partes.push(`⚠ ${qtd} unidades inteiras? Se você quis dizer GRAMAS, converta aqui →`);
+    }
     if (!(ing.custo_base > 0)) partes.push('⚠ sem preço — o CMV não fecha sem ele');
     else if (qtd > 0) partes.push(`custa ≈ ${Fmt.moeda(ing.custo_base * qtd * fator)} nesta porção`);
+    // textContent (não innerHTML): nomes de embalagem são texto do usuário
     info.textContent = partes.join(' · ');
+    // Item por unidade (alface, costela…): atalho para usar pesando
+    if (ing.unidade_base === 'un' && !ing.receita) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'link-converter';
+      btn.textContent = '⚖️ uso pesando (converter p/ gramas)';
+      btn.onclick = () => ConverterUn.abrir(ing.id, div);
+      if (partes.length) info.appendChild(document.createTextNode(' · '));
+      info.appendChild(btn);
+    }
   },
   // Prévia do CMV ao vivo (sem rateio — esse entra no Confirmar)
   recalcularLive() {
@@ -791,8 +831,10 @@ const NovoIngrediente = {
     NovoIngrediente._linha = null;
   },
   trocarUnidade() {
-    const emb = document.getElementById('ni-unidade').value === 'emb';
-    document.getElementById('ni-emb-campos').style.display = emb ? 'flex' : 'none';
+    const un = document.getElementById('ni-unidade').value;
+    document.getElementById('ni-emb-campos').style.display = un === 'emb' ? 'flex' : 'none';
+    // Comprou por unidade mas usa pesando? Aponta para o modo embalagem.
+    document.getElementById('ni-un-hint').style.display = un === 'un' ? 'block' : 'none';
     NovoIngrediente.preview();
   },
   preview() {
@@ -854,6 +896,256 @@ const NovoIngrediente = {
       Fichas.recalcularLive();
       UI.toast(`"${novo.nome}" cadastrado${body.lancar_estoque ? ' e lançado no estoque' : ' (estoque não foi alterado)'}.`);
     } catch (err) { UI.toast(err.erro || 'Erro ao cadastrar ingrediente.', 'erro'); }
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
+// CONVERSÃO "un" → PESO (alface, costela, abacaxi…)
+// Item comprado por unidade mas usado pesando: converte preço,
+// estoque, mínimo e TODAS as fichas/receitas de uma vez (backend).
+// Abre da linha da ficha (com a linha para focar depois) ou da
+// aba Ingredientes (linha = null).
+// ═══════════════════════════════════════════════════════════════
+const ConverterUn = {
+  _linha: null,
+
+  abrir(ingId, linha = null) {
+    const ing = _ingredientes.find(i => i.id === ingId);
+    if (!ing) return;
+    ConverterUn._linha = linha;
+    document.getElementById('form-converter-un').reset();
+    document.getElementById('conv-id').value = ing.id;
+    document.getElementById('conv-nome').textContent = ing.nome;
+    document.getElementById('conv-titulo').textContent = `⚖️ Usar "${ing.nome}" por peso`;
+    document.getElementById('conv-unidade').value = 'g';
+    document.getElementById('conv-valor').placeholder = ing.custo_base > 0
+      ? `hoje: ${Fmt.moeda(ing.custo_base)}/un (opcional)` : 'opcional';
+    document.getElementById('conv-preview').style.display = 'none';
+    UI.abrirModal('modal-converter-un');
+    document.getElementById('conv-peso').focus();
+  },
+
+  depois() {
+    UI.fecharModal('modal-converter-un');
+    UI.toast('Sem problema! Enquanto isso use frações na ficha: 0,5 = meia unidade, 0,25 = um quarto.', 'aviso');
+    ConverterUn._linha = null;
+  },
+
+  preview() {
+    const peso = parseFloat(document.getElementById('conv-peso').value);
+    const un = document.getElementById('conv-unidade').value;
+    const ing = _ingredientes.find(i => i.id === document.getElementById('conv-id').value);
+    // valor por 1 unidade: o digitado, ou o preço atual do item
+    const valor = parseFloat(document.getElementById('conv-valor').value) || (ing?.custo_base > 0 ? ing.custo_base : 0);
+    const prev = document.getElementById('conv-preview');
+    if (peso > 0 && valor > 0) {
+      const custoBase = valor / paraBase(peso, un);
+      document.getElementById('conv-preview-valor').textContent = Fmt.custoUnit(custoBase, UNIDADES[un].base);
+      prev.style.display = 'block';
+    } else prev.style.display = 'none';
+  },
+
+  async salvar(e) {
+    e.preventDefault();
+    const id = document.getElementById('conv-id').value;
+    const peso = parseFloat(document.getElementById('conv-peso').value);
+    if (!(peso > 0)) { UI.toast('Informe quanto 1 unidade rende (ex.: 300 g).', 'erro'); return; }
+    const body = {
+      unidade: document.getElementById('conv-unidade').value,
+      conteudo: peso,
+      nome_unidade: document.getElementById('conv-nome-un').value.trim(),
+    };
+    const valor = parseFloat(document.getElementById('conv-valor').value);
+    if (valor > 0) body.valor_unidade = valor;
+    try {
+      const res = await API.post(`/ingredientes/${id}/converter-uso`, body);
+      UI.fecharModal('modal-converter-un');
+      _ingredientes = await API.get('/ingredientes');
+      const novo = _ingredientes.find(i => i.id === id);
+      const fatorBase = conteudoBaseEmb(novo?.embalagem) || 1;
+
+      const fichaAberta = !document.getElementById('modal-ficha').classList.contains('hidden');
+      if (fichaAberta) {
+        // Atualiza os seletores e converte as quantidades já digitadas (eram "un").
+        // A linha que pediu a conversão é limpa: o usuário vai digitar os gramas agora.
+        document.querySelectorAll('#ingredientes-lista-ficha .ing-select')
+          .forEach(s => Fichas.popularSelect(s, s.value));
+        document.querySelectorAll('#ingredientes-lista-ficha .ingrediente-linha').forEach(d => {
+          if (d.querySelector('.ing-select').value !== id) { Fichas.atualizarLinha(d); return; }
+          const inp = d.querySelector('.ing-qtd');
+          if (d === ConverterUn._linha) inp.value = '';
+          else if (parseFloat(inp.value) > 0) inp.value = Math.round(parseFloat(inp.value) * fatorBase * 100) / 100;
+          Fichas.atualizarLinha(d);
+        });
+        Fichas.recalcularLive();
+        if (ConverterUn._linha) ConverterUn._linha.querySelector('.ing-qtd').focus();
+      } else {
+        await Ingredientes.carregar();
+      }
+      UI.toast(res.mensagem || 'Convertido!');
+    } catch (err) { UI.toast(err.erro || 'Erro ao converter.', 'erro'); }
+    ConverterUn._linha = null;
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
+// PREPAROS (sub-receitas da casa: costela desfiada, abacaxi
+// caramelizado, molho especial…). Viram ingredientes com custo
+// derivado da receita — atualizado quando o preço do insumo muda.
+// ═══════════════════════════════════════════════════════════════
+const Preparos = {
+  abrirNovo() {
+    document.getElementById('form-preparo').reset();
+    document.getElementById('pr-id').value = '';
+    document.getElementById('modal-preparo-titulo').textContent = '🍳 Novo Preparo (receita da casa)';
+    document.getElementById('pr-componentes').innerHTML =
+      '<div class="ingrediente-vazio">Nenhum ingrediente — clique em "+ Adicionar"</div>';
+    Preparos.trocarUnidade();
+    Preparos.adicionarComponente();
+    Preparos.recalcLive();
+    UI.abrirModal('modal-preparo');
+  },
+
+  async editar(id) {
+    try { _ingredientes = await API.get('/ingredientes'); } catch {}
+    const ing = _ingredientes.find(i => i.id === id);
+    if (!ing || !ing.receita) return;
+    document.getElementById('form-preparo').reset();
+    document.getElementById('pr-id').value = ing.id;
+    document.getElementById('modal-preparo-titulo').textContent = `🍳 Receita — ${ing.nome}`;
+    document.getElementById('pr-nome').value = ing.nome;
+    document.getElementById('pr-unidade').value = ing.unidade_base;
+    Preparos.trocarUnidade();
+    document.getElementById('pr-rend').value = ing.receita.rendimento || '';
+    if (ing.receita.unidade_rendimento) document.getElementById('pr-rend-un').value = ing.receita.unidade_rendimento;
+    document.getElementById('pr-componentes').innerHTML = '';
+    (ing.receita.itens || []).forEach(it => Preparos.adicionarComponente(it));
+    Preparos.recalcLive();
+    UI.abrirModal('modal-preparo');
+  },
+
+  trocarUnidade() {
+    const base = document.getElementById('pr-unidade').value;
+    const compat = UNIDADES_POR_BASE[base] || [base];
+    const sel = document.getElementById('pr-rend-un');
+    const atual = sel.value;
+    sel.innerHTML = compat.map(u => `<option value="${u}">${u}</option>`).join('');
+    if (compat.includes(atual)) sel.value = atual;
+    Preparos.recalcLive();
+  },
+
+  adicionarComponente(item = null) {
+    const cont = document.getElementById('pr-componentes');
+    cont.querySelector('.ingrediente-vazio')?.remove();
+    const div = document.createElement('div');
+    div.className = 'ingrediente-linha';
+    div.innerHTML = `
+      <div><label>Ingrediente *</label>
+        <select class="pr-comp-select" required onchange="Preparos.aoEditar(this)"></select>
+        <small class="ing-info"></small></div>
+      <div><label class="pr-lbl-qtd">Quantidade</label>
+        <input type="number" class="pr-comp-qtd" step="0.01" min="0.01" value="${item?.quantidade || ''}" required placeholder="Ex: 3000" oninput="Preparos.aoEditar(this)" /></div>
+      <button type="button" class="btn-remover" onclick="this.parentElement.remove();Preparos.recalcLive()" title="Remover">✕</button>`;
+    cont.appendChild(div);
+    Preparos.popularSelectComp(div.querySelector('.pr-comp-select'), item?.ingrediente_id || '');
+    Preparos.atualizarLinhaComp(div);
+  },
+
+  // Só ingredientes "crus" entram na receita (preparo não contém preparo)
+  popularSelectComp(sel, selecionado = '') {
+    const proprio = document.getElementById('pr-id').value;
+    const opts = _ingredientes
+      .filter(i => !i.receita && i.id !== proprio)
+      .map(i => {
+        const aviso = i.custo_base > 0 ? '' : ' ⚠ sem preço';
+        return `<option value="${i.id}">${i.nome} (${i.unidade_base})${aviso}</option>`;
+      }).join('');
+    sel.innerHTML = `<option value="">— selecione —</option>${opts}`;
+    sel.value = selecionado || '';
+  },
+
+  aoEditar(el) {
+    Preparos.atualizarLinhaComp(el.closest('.ingrediente-linha'));
+    Preparos.recalcLive();
+  },
+
+  atualizarLinhaComp(div) {
+    const ing = _ingredientes.find(i => i.id === div.querySelector('.pr-comp-select').value);
+    const lbl = div.querySelector('.pr-lbl-qtd');
+    const info = div.querySelector('.ing-info');
+    if (!ing) { lbl.textContent = 'Quantidade'; info.textContent = ''; return; }
+    lbl.textContent = `Quantidade (${ing.unidade_base})`;
+    const partes = [];
+    if (ing.embalagem) partes.push(`📦 1 ${ing.embalagem.nome} = ${ing.embalagem.conteudo} ${ing.embalagem.unidade}`);
+    const qtd = parseFloat(div.querySelector('.pr-comp-qtd').value);
+    if (!(ing.custo_base > 0)) partes.push('⚠ sem preço');
+    else if (qtd > 0) partes.push(`≈ ${Fmt.moeda(ing.custo_base * qtd)}`);
+    info.textContent = partes.join(' · ');
+  },
+
+  coletar() {
+    return [...document.querySelectorAll('#pr-componentes .ingrediente-linha')].map(d => ({
+      ingrediente_id: d.querySelector('.pr-comp-select').value,
+      quantidade: parseFloat(d.querySelector('.pr-comp-qtd').value),
+    }));
+  },
+
+  recalcLive() {
+    const box = document.getElementById('pr-custo-live');
+    if (!box) return;
+    let custo = 0, linhas = 0, semPreco = false;
+    document.querySelectorAll('#pr-componentes .ingrediente-linha').forEach(d => {
+      const ing = _ingredientes.find(i => i.id === d.querySelector('.pr-comp-select').value);
+      const qtd = parseFloat(d.querySelector('.pr-comp-qtd').value);
+      if (!ing || !(qtd > 0)) return;
+      linhas++;
+      if (ing.custo_base > 0) custo += ing.custo_base * qtd;
+      else semPreco = true;
+    });
+    if (!linhas) { box.style.display = 'none'; return; }
+    const base = document.getElementById('pr-unidade').value;
+    const rend = parseFloat(document.getElementById('pr-rend').value);
+    const rendBase = rend > 0 ? paraBase(rend, document.getElementById('pr-rend-un').value) : 0;
+    let txt = `Custo da leva: ${Fmt.moeda(custo)}`;
+    if (rendBase > 0) txt += ` → ${Fmt.custoUnit(custo / rendBase, base)}`;
+    else txt += ' — informe o rendimento para calcular o custo por ' + base;
+    if (semPreco) txt += ' · ⚠ há componente sem preço (custo incompleto)';
+    document.getElementById('pr-custo-texto').textContent = txt;
+    box.style.display = 'block';
+  },
+
+  async salvar(e) {
+    e.preventDefault();
+    const id = document.getElementById('pr-id').value;
+    const itens = Preparos.coletar();
+    if (!itens.length) { UI.toast('Adicione ao menos um ingrediente na receita.', 'erro'); return; }
+    if (itens.some(i => !i.ingrediente_id)) { UI.toast('Selecione o ingrediente em cada linha.', 'erro'); return; }
+    const body = {
+      nome: document.getElementById('pr-nome').value,
+      unidade_base: document.getElementById('pr-unidade').value,
+      rendimento: parseFloat(document.getElementById('pr-rend').value),
+      unidade_rendimento: document.getElementById('pr-rend-un').value,
+      itens,
+    };
+    try {
+      const res = id ? await API.put('/preparos/' + id, body) : await API.post('/preparos', body);
+      UI.fecharModal('modal-preparo');
+      await Ingredientes.carregar();
+      UI.toast(res.mensagem || 'Preparo salvo.');
+    } catch (err) { UI.toast(err.erro || 'Erro ao salvar o preparo.', 'erro'); }
+  },
+
+  // "Produzi uma leva": entrada do rendimento + baixa dos ingredientes
+  async producao(id, nome) {
+    const resp = prompt(`Quantas levas de "${nome}" você produziu?\n(1 leva = a receita inteira; pode usar 0,5 para meia receita)`, '1');
+    if (resp === null) return;
+    const levas = parseFloat(String(resp).replace(',', '.'));
+    if (!(levas > 0)) { UI.toast('Quantidade de levas inválida.', 'erro'); return; }
+    try {
+      const res = await API.post(`/preparos/${id}/producao`, { levas });
+      await Ingredientes.carregar();
+      UI.toast(res.mensagem || 'Produção registrada.');
+    } catch (err) { UI.toast(err.erro || 'Erro ao registrar a produção.', 'erro'); }
   },
 };
 

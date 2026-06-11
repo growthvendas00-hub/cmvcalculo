@@ -172,6 +172,7 @@ function processarMensagem(texto, de) {
 
     // COMPRA: tem verbo de compra OU veio um valor junto
     if (/compr|paguei|chegou nota|nota fiscal/.test(t) || valor) {
+      if (ing.receita) return responder(`⚠️ "${ing.nome}" é um preparo — o custo dele vem da receita, não de compra. Compre os ingredientes da receita.`, false, 'compra_preparo');
       if (!valor) return responder(`Para registrar a compra preciso do valor. Ex.: "comprei ${ing.nome.toLowerCase()} ${qtd.quantidade}${qtd.unidade} 120".`, false, 'compra_sem_valor');
       return responder(registrarCompra(ing, qtd, valor), true, 'compra');
     }

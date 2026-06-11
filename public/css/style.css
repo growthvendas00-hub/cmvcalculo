@@ -432,6 +432,40 @@ form { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
   line-height: 1.4;
 }
 
+/* Dica em destaque (caixinha) — ex.: "compra por unidade mas usa pesando?" */
+.hint-destaque {
+  display: block;
+  background: rgba(245,166,35,0.07);
+  border: 1px dashed rgba(245,166,35,0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 4px 0 10px;
+  font-style: normal;
+}
+
+/* Botão com cara de link (atalhos inline: converter un→peso etc.) */
+.link-converter {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-converter:hover { filter: brightness(1.2); }
+
+/* Parágrafo explicativo no topo dos modais (conversor, preparo) */
+.modal-explica {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  padding: 12px 20px 0;
+}
+.modal-explica strong { color: var(--text); }
+
 .toggle-label {
   display: flex !important;
   align-items: center;
@@ -1101,6 +1135,12 @@ form { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
   padding: 1px 8px;
   margin-left: 4px;
   white-space: nowrap;
+}
+/* Tag de preparo (sub-receita da casa) */
+.prep-tag {
+  background: rgba(74,222,128,0.10);
+  color: var(--green);
+  border-color: rgba(74,222,128,0.35);
 }
 
 /* ─── Gate de Login ───────────────────────────────────────────── */

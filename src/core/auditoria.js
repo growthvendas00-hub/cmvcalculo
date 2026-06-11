@@ -21,6 +21,7 @@ const storage = require('./storage');
 const units = require('./units');
 const cmv = require('./cmv');
 const backup = require('./backup');
+const preparos = require('./preparos');
 
 const LIMITE_CUSTO_EXIB = { g: 500, ml: 300, un: 250 }; // R$ por kg / L / un
 const QTD_UN_SUSPEITA = 10;
@@ -128,7 +129,7 @@ function executar() {
       if (exagerado.length) {
         P('aviso', 'Modelagem', `"${ing.nome}" é medido em "un", mas uma ficha pede ${Math.max(...exagerado.map(u => Number(u.item.quantidade) || 0))} un`,
           `Usar dezenas de "unidades" numa receita quase sempre quer dizer gramas/ml. Fichas: ${exagerado.map(u => u.ficha.nome).join(', ')}. É o erro clássico de "lata contada inteira".`,
-          { alvo, sugestao: 'Mude para g/ml e cadastre a compra "Por embalagem".' });
+          { alvo, sugestao: 'Aba Ingredientes → botão "⚖️ Usar por peso" (converte fichas e estoque junto).' });
       }
     }
 
@@ -141,6 +142,40 @@ function executar() {
     if (Array.isArray(ing.historico)) {
       const ruins = ing.historico.filter(h => !ehNumero(Number(h.custo_base)) || !isoValido(h.data)).length;
       if (ruins > 0) P('info', 'Integridade', `Histórico de compras com ${ruins} registro(s) estranho(s) em "${ing.nome}"`, 'Algumas compras antigas têm custo/data inválidos. Não afeta o preço atual.', { alvo });
+    }
+  }
+
+  // ───────────────────────── PREPAROS (sub-receitas) ─────────────────────────
+  for (const ing of ingredientes) {
+    if (!ing.receita) continue;
+    const alvo = { tipo: 'ingrediente', id: ing.id, nome: ing.nome || '(sem nome)' };
+
+    if (!Array.isArray(ing.receita.itens) || !ing.receita.itens.length) {
+      P('critico', 'Preparo', `Preparo "${ing.nome}" sem receita`, 'Não há componentes — o custo fica zerado e qualquer ficha que o use calcula errado.', { alvo, sugestao: 'Edite o preparo e monte a receita.' });
+      continue;
+    }
+    if (!(Number(ing.receita.rendimento_base) > 0)) {
+      P('critico', 'Preparo', `Preparo "${ing.nome}" sem rendimento válido`, 'Sem saber quanto a receita rende, o custo por g/ml não calcula.', { alvo, sugestao: 'Edite o preparo e informe o rendimento (ex.: 800 g).' });
+    }
+
+    const semPreco = [];
+    for (const item of ing.receita.itens) {
+      const comp = mapIng.get(item.ingrediente_id);
+      if (!comp) {
+        P('critico', 'Preparo', `Receita de "${ing.nome}" usa ingrediente que não existe mais`, 'Um componente foi excluído — o custo do preparo está incompleto.', { alvo, sugestao: 'Edite a receita e substitua o componente.' });
+        continue;
+      }
+      if (comp.receita) P('critico', 'Preparo', `"${ing.nome}" contém outro preparo (${comp.nome})`, 'Preparo dentro de preparo não é suportado — o custo não acompanha as mudanças. Use os ingredientes crus.', { alvo });
+      if (!(Number(item.quantidade) > 0)) P('aviso', 'Preparo', `Componente com quantidade inválida em "${ing.nome}"`, `"${comp.nome}" está com quantidade ≤ 0 — não soma ao custo.`, { alvo });
+      if (!(Number(comp.custo_base) > 0)) semPreco.push(comp.nome);
+    }
+    if (semPreco.length) {
+      P('aviso', 'Preparo', `Receita de "${ing.nome}" tem componente(s) sem preço`, `Sem preço: ${semPreco.join(', ')}. O custo do preparo está menor do que o real.`, { alvo, sugestao: 'Registre o preço desses ingredientes.' });
+    }
+
+    const vivo = preparos.custoReceita(ing.receita);
+    if (Math.abs((Number(ing.custo_base) || 0) - vivo.custo_base) > 0.000001) {
+      P('aviso', 'Desatualizado', `Custo do preparo "${ing.nome}" está defasado`, `Salvo ${moeda(ex(Number(ing.custo_base) || 0, ing.unidade_base).valor)}/${ex(0, ing.unidade_base).unidade}, recalculado ${moeda(ex(vivo.custo_base, ing.unidade_base).valor)}/${ex(0, ing.unidade_base).unidade}.`, { alvo, acao: 'recalcular_preparos', sugestao: 'Use "Corrigir" para recalcular os preparos.' });
     }
   }
 
@@ -335,6 +370,15 @@ function corrigir(acao) {
     }
     if (n > 0) storage.salvarTodasFichas(fichas);
     return { ok: true, corrigidos: n, mensagem: `${n} ficha(s) recalculada(s) e atualizada(s).` };
+  }
+
+  if (acao === 'recalcular_preparos') {
+    let n = 0;
+    for (const ing of storage.listarIngredientes()) {
+      if (!ing.receita) continue;
+      if (preparos.recalcular(ing)) { cmv.propagarPreco(ing.id); n++; }
+    }
+    return { ok: true, corrigidos: n, mensagem: `${n} preparo(s) recalculado(s) (fichas atualizadas junto).` };
   }
 
   if (acao === 'limpar_movimentos_orfaos') {

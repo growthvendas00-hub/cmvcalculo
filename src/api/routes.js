@@ -11,6 +11,7 @@ const caixaCore = require('../core/caixa');
 const historicoCore = require('../core/historico');
 const auditoriaCore = require('../core/auditoria');
 const backupCore = require('../core/backup');
+const preparosCore = require('../core/preparos');
 
 const RE_DATA = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -119,6 +120,11 @@ router.post('/ingredientes', (req, res) => {
   let existente = id ? storage.buscarIngredientePorId(id) : null;
   if (!existente && nome) existente = storage.buscarIngredientePorNome(nome);
 
+  // Preparo não tem "compra": o custo dele vem da receita.
+  if (existente && preparosCore.ehPreparo(existente)) {
+    return res.status(409).json({ erro: `"${existente.nome}" é um preparo — o custo dele é calculado pela receita. Atualize o preço dos ingredientes da receita (ou edite a receita).` });
+  }
+
   let ingrediente;
   let precoAlterado = false;
 
@@ -165,6 +171,8 @@ router.post('/ingredientes', (req, res) => {
   storage.salvarIngrediente(ingrediente);
 
   const fichas_atualizadas = precoAlterado ? cmvCore.propagarPreco(ingrediente.id) : [];
+  // Preparos que usam este ingrediente na receita também mudam de custo
+  const preparos_atualizados = precoAlterado ? preparosCore.recalcularPreparosComIngrediente(ingrediente.id) : [];
 
   // Entrada automática no estoque (toda compra que chega aumenta o estoque).
   let entrada_estoque = null;
@@ -183,6 +191,7 @@ router.post('/ingredientes', (req, res) => {
     ingrediente,
     precoAlterado,
     fichas_atualizadas,
+    preparos_atualizados,
     entrada_estoque,
     mensagem: existente
       ? (precoAlterado
@@ -209,6 +218,9 @@ router.put('/ingredientes/:id', (req, res) => {
   let estoqueAntes = Number(ing.estoque_atual) || 0;
   if (unidade_base && units.existeUnidade(unidade_base)) {
     if (ing.unidade_base && ing.unidade_base !== unidade_base) {
+      if (preparosCore.ehPreparo(ing)) {
+        return res.status(400).json({ erro: 'A unidade de um preparo é definida pela receita. Edite o preparo (botão Receita) para mudar.' });
+      }
       baseMudou = true;
       ing.estoque_atual = 0; // mudou a unidade de uso → estoque antigo perde o sentido
     }
@@ -244,8 +256,248 @@ router.delete('/ingredientes/:id', (req, res) => {
   if (emUso.length > 0) {
     return res.status(409).json({ erro: `Ingrediente em uso nas fichas: ${emUso.join(', ')}. Remova-o dessas fichas antes de excluir.` });
   }
+  const emReceitas = storage.listarIngredientes()
+    .filter(p => preparosCore.ehPreparo(p) && p.receita.itens.some(i => i.ingrediente_id === req.params.id))
+    .map(p => p.nome);
+  if (emReceitas.length > 0) {
+    return res.status(409).json({ erro: `Ingrediente usado na receita do(s) preparo(s): ${emReceitas.join(', ')}. Ajuste as receitas antes de excluir.` });
+  }
   storage.deletarIngrediente(req.params.id);
   res.json({ mensagem: 'Ingrediente excluído.' });
+});
+
+// ── Conversão de uso: item de UNIDADE que na verdade é usado por PESO/VOLUME ──
+// Caso clássico: pé de alface comprado "por unidade", mas pesado na ficha.
+// Converte TUDO de uma vez, sem quebrar nada:
+//   • unidade de uso vira g/ml e a "unidade" vira embalagem (1 pé = 300 g);
+//   • custo por unidade vira custo por g (ou usa o valor_unidade informado);
+//   • estoque e mínimo são convertidos (com movimento de ajuste no histórico);
+//   • fichas e receitas de preparo que usavam "X un" passam a "X × peso".
+// Body: { unidade: 'g'|'ml'|'kg'|'L', conteudo: peso de 1 unidade,
+//         nome_unidade?: 'pé'|'maço'|…, valor_unidade?: R$ por 1 unidade (opcional) }
+router.post('/ingredientes/:id/converter-uso', (req, res) => {
+  const ing = storage.buscarIngredientePorId(req.params.id);
+  if (!ing) return res.status(404).json({ erro: 'Ingrediente não encontrado.' });
+  if (ing.unidade_base !== 'un') {
+    return res.status(400).json({ erro: `"${ing.nome}" já é usado em ${ing.unidade_base}.` });
+  }
+  if (preparosCore.ehPreparo(ing)) {
+    return res.status(400).json({ erro: 'Para mudar a unidade de um preparo, edite a receita dele.' });
+  }
+
+  const unConteudo = req.body.unidade;
+  if (!units.existeUnidade(unConteudo) || !['g', 'ml'].includes(units.unidadeBase(unConteudo))) {
+    return res.status(400).json({ erro: 'Informe a unidade do peso/volume (g, kg, ml ou L).' });
+  }
+  const conteudo = parseFloat(req.body.conteudo);
+  if (!(conteudo > 0)) {
+    return res.status(400).json({ erro: 'Informe quanto 1 unidade rende (ex.: 1 pé de alface ≈ 300 g).' });
+  }
+  const novaBase = units.unidadeBase(unConteudo);
+  const conteudoBase = units.paraBase(conteudo, unConteudo); // g/ml por 1 unidade
+  const nomeUnidade = (req.body.nome_unidade || '').trim() || 'unidade';
+
+  // Novo custo por g/ml: usa o valor pago por 1 unidade (se informado),
+  // senão converte o custo por unidade já cadastrado. Sem nenhum dos dois,
+  // o item segue "sem preço" (igual estava).
+  const valorUnidade = parseFloat(req.body.valor_unidade);
+  let novoCusto = 0;
+  if (valorUnidade > 0) novoCusto = cmvCore.arredondar(valorUnidade / conteudoBase, 6);
+  else if (Number(ing.custo_base) > 0) novoCusto = cmvCore.arredondar(Number(ing.custo_base) / conteudoBase, 6);
+
+  const estoqueAntes = Number(ing.estoque_atual) || 0;
+  const estoqueDepois = cmvCore.arredondar(estoqueAntes * conteudoBase, 3);
+
+  ing.unidade_base = novaBase;
+  ing.custo_base = novoCusto;
+  ing.embalagem = { nome: nomeUnidade, conteudo, unidade: unConteudo };
+  if (Number(ing.estoque_minimo) > 0) {
+    ing.estoque_minimo = cmvCore.arredondar(Number(ing.estoque_minimo) * conteudoBase, 3);
+  }
+  ing.estoque_atual = estoqueDepois;
+  if (valorUnidade > 0) {
+    // Registra como compra de 1 embalagem — mantém a análise de compras coerente
+    ing.historico = [...(ing.historico || []), {
+      data: new Date().toISOString(), fornecedor: null,
+      modo: 'embalagem', embalagem: ing.embalagem, quantidade_embalagens: 1,
+      quantidade_comprada: 1, unidade_compra: nomeUnidade,
+      valor_total: cmvCore.arredondar(valorUnidade, 2), custo_base: novoCusto,
+    }];
+    ing.unidade_compra = nomeUnidade;
+  }
+  ing.ultima_atualizacao = new Date().toISOString();
+  storage.salvarIngrediente(ing);
+
+  // Histórico de estoque continua encadeado: ajuste explícito da conversão
+  if (estoqueAntes > 0) {
+    storage.salvarMovimento({
+      id: uuidv4(),
+      ingrediente_id: ing.id,
+      ingrediente_nome: ing.nome,
+      tipo: 'ajuste',
+      quantidade_base: cmvCore.arredondar(estoqueDepois - estoqueAntes, 3),
+      unidade_base: novaBase,
+      estoque_antes: estoqueAntes,
+      estoque_depois: estoqueDepois,
+      custo_base: novoCusto,
+      motivo: `Conversão de unidade: 1 ${nomeUnidade} = ${conteudo} ${unConteudo} (estoque de ${estoqueAntes} un virou ${estoqueDepois} ${novaBase})`,
+      data: new Date().toISOString(),
+    });
+  }
+
+  // Fichas que usavam "X un" passam a usar "X × peso" (mesma porção real)
+  const fichas = storage.listarFichas();
+  const fichas_convertidas = [];
+  let mexeuFicha = false;
+  for (const f of fichas) {
+    if (!Array.isArray(f.ingredientes)) continue;
+    let mudou = false;
+    for (const item of f.ingredientes) {
+      if (item.ingrediente_id !== ing.id) continue;
+      item.quantidade = cmvCore.arredondar((Number(item.quantidade) || 0) * conteudoBase, 2);
+      mudou = true;
+    }
+    if (!mudou) continue;
+    mexeuFicha = true;
+    if (f.status === 'confirmado') {
+      const r = cmvCore.calcularCMV(f);
+      if (r.valido) f.cmv_cache = r;
+    }
+    f.ultima_atualizacao = new Date().toISOString();
+    fichas_convertidas.push(f.nome);
+  }
+  if (mexeuFicha) storage.salvarTodasFichas(fichas);
+
+  // Receitas de preparo que usavam o item em "un" também são convertidas
+  const preparos_convertidos = [];
+  for (const p of storage.listarIngredientes()) {
+    if (!preparosCore.ehPreparo(p)) continue;
+    let mudou = false;
+    for (const item of p.receita.itens) {
+      if (item.ingrediente_id !== ing.id) continue;
+      item.quantidade = cmvCore.arredondar((Number(item.quantidade) || 0) * conteudoBase, 3);
+      mudou = true;
+    }
+    if (!mudou) continue;
+    p.ultima_atualizacao = new Date().toISOString();
+    storage.salvarIngrediente(p);
+    preparosCore.recalcular(p);
+    cmvCore.propagarPreco(p.id);
+    preparos_convertidos.push(p.nome);
+  }
+
+  res.json({
+    ingrediente: storage.buscarIngredientePorId(ing.id),
+    fichas_convertidas,
+    preparos_convertidos,
+    mensagem: `"${ing.nome}" agora é usado em ${novaBase} (1 ${nomeUnidade} = ${conteudo} ${unConteudo}).`
+      + (fichas_convertidas.length ? ` Fichas convertidas: ${fichas_convertidas.join(', ')}.` : ''),
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO 1B — PREPAROS (sub-receitas: costela desfiada, abacaxi
+// caramelizado, molho da casa…). Viram ingredientes com custo derivado.
+// ═══════════════════════════════════════════════════════════════
+
+// Cria um preparo. Body: { nome, unidade_base, rendimento,
+//   unidade_rendimento, itens: [{ ingrediente_id, quantidade }] }
+router.post('/preparos', (req, res) => {
+  const nome = (req.body.nome || '').trim();
+  if (!nome) return res.status(400).json({ erro: 'Dê um nome ao preparo (ex.: Costela desfiada).' });
+  if (storage.buscarIngredientePorNome(nome)) {
+    return res.status(409).json({ erro: `Já existe um item chamado "${nome}".` });
+  }
+  const unidade_base = req.body.unidade_base;
+  if (!['g', 'ml', 'un'].includes(unidade_base)) {
+    return res.status(400).json({ erro: 'Unidade de uso inválida (g, ml ou un).' });
+  }
+  const r = preparosCore.montarReceita(req.body, unidade_base);
+  if (r.erro) return res.status(400).json({ erro: r.erro });
+
+  const custo = preparosCore.custoReceita(r.receita);
+  const ingrediente = {
+    id: uuidv4(),
+    nome,
+    unidade_base,
+    custo_base: custo.custo_base,
+    unidade_compra: null,
+    receita: r.receita,
+    historico: [],
+    ultima_atualizacao: new Date().toISOString(),
+  };
+  storage.salvarIngrediente(ingrediente);
+  res.status(201).json({
+    ingrediente,
+    custo,
+    mensagem: custo.sem_preco.length
+      ? `Preparo criado, mas há componente(s) sem preço: ${custo.sem_preco.join(', ')}. O custo está incompleto.`
+      : `Preparo "${nome}" criado — custo ${`R$ ${custo.custo_total.toFixed(2).replace('.', ',')}`} por ${r.receita.rendimento} ${r.receita.unidade_rendimento}.`,
+  });
+});
+
+// Edita a receita (e opcionalmente nome/unidade) de um preparo.
+router.put('/preparos/:id', (req, res) => {
+  const ing = storage.buscarIngredientePorId(req.params.id);
+  if (!ing) return res.status(404).json({ erro: 'Preparo não encontrado.' });
+  if (!preparosCore.ehPreparo(ing)) return res.status(400).json({ erro: 'Este item não é um preparo.' });
+
+  if (req.body.nome) {
+    const outro = storage.buscarIngredientePorNome(req.body.nome);
+    if (outro && outro.id !== ing.id) {
+      return res.status(409).json({ erro: `Já existe um item chamado "${req.body.nome}".` });
+    }
+    ing.nome = req.body.nome.trim();
+  }
+
+  const novaBase = ['g', 'ml', 'un'].includes(req.body.unidade_base) ? req.body.unidade_base : ing.unidade_base;
+  const r = preparosCore.montarReceita(req.body, novaBase, ing.id);
+  if (r.erro) return res.status(400).json({ erro: r.erro });
+
+  // Mudou a unidade de uso? Estoque antigo perde o sentido (mesma regra dos ingredientes).
+  if (novaBase !== ing.unidade_base) {
+    const estoqueAntes = Number(ing.estoque_atual) || 0;
+    ing.unidade_base = novaBase;
+    ing.estoque_atual = 0;
+    if (ing.embalagem && units.unidadeBase(ing.embalagem.unidade) !== novaBase) ing.embalagem = null;
+    storage.salvarIngrediente(ing);
+    logarZeragemEstoque(ing, estoqueAntes, 'Estoque zerado: unidade de uso do preparo alterada');
+  }
+
+  ing.receita = r.receita;
+  const custo = preparosCore.custoReceita(r.receita);
+  ing.custo_base = custo.custo_base;
+  ing.ultima_atualizacao = new Date().toISOString();
+  storage.salvarIngrediente(ing);
+  const fichas_atualizadas = cmvCore.propagarPreco(ing.id);
+
+  res.json({
+    ingrediente: ing,
+    custo,
+    fichas_atualizadas,
+    mensagem: `Receita de "${ing.nome}" atualizada.` +
+      (fichas_atualizadas.length ? ` CMVs recalculados: ${fichas_atualizadas.join(', ')}.` : ''),
+  });
+});
+
+// Prévia de custo de uma receita SEM salvar (para o modal calcular ao vivo).
+router.post('/preparos/preview', (req, res) => {
+  const unidade_base = ['g', 'ml', 'un'].includes(req.body.unidade_base) ? req.body.unidade_base : 'g';
+  const r = preparosCore.montarReceita(req.body, unidade_base, req.body.id || null);
+  if (r.erro) return res.status(400).json({ erro: r.erro });
+  res.json(preparosCore.custoReceita(r.receita));
+});
+
+// "Produzi uma leva": entrada do rendimento + baixa dos componentes no estoque.
+router.post('/preparos/:id/producao', (req, res) => {
+  const ing = storage.buscarIngredientePorId(req.params.id);
+  if (!ing) return res.status(404).json({ erro: 'Preparo não encontrado.' });
+  const r = preparosCore.registrarProducao(ing, req.body.levas !== undefined ? req.body.levas : 1);
+  if (r.erro) return res.status(400).json({ erro: r.erro });
+  res.json({
+    ...r,
+    mensagem: `Produção registrada: ${ing.nome} entrou no estoque e ${r.baixas.length} ingrediente(s) foram baixados.`,
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

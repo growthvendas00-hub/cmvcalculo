@@ -67,6 +67,7 @@
     <h2>Matriz de Ingredientes</h2>
     <div style="display:flex;gap:10px">
       <button class="btn-secondary" onclick="IngPadrao.abrirModal()">📋 Lista Padrão</button>
+      <button class="btn-secondary" onclick="Preparos.abrirNovo()" title="Receita feita na casa que vira ingrediente: costela desfiada, abacaxi caramelizado, molho especial…">🍳 Novo Preparo</button>
       <button class="btn-primary" onclick="Ingredientes.abrirNovo()">+ Novo Ingrediente</button>
     </div>
   </div>
@@ -655,14 +656,15 @@
             <input id="compra-quantidade" type="number" step="0.001" min="0.001" placeholder="Ex: 5" oninput="Ingredientes.atualizarPreviewCompra()" />
           </div>
         </div>
+        <small class="campo-hint hint-destaque" id="compra-un-hint" style="display:none">🥬 Compra por unidade (pé, maço, peça) mas <strong>usa pesando</strong> na receita? <button type="button" class="link-converter" onclick="Ingredientes.usarModoEmbalagem()">Mude para "Por embalagem"</button> e informe quanto 1 unidade rende (ex.: 1 pé de alface = 300 g) — assim a ficha usa gramas e o custo sai exato.</small>
       </div>
 
       <!-- MODO EMBALAGEM -->
       <div id="compra-sec-embalagem" style="display:none">
         <div class="form-row">
           <div class="form-group" style="flex:2">
-            <label class="campo-com-dica">Nome da embalagem<span class="dica-icone" data-dica="Como você chama o pacote que comprou: lata, caixa, pacote, dúzia, fardo, balde…">?</span></label>
-            <input id="compra-emb-nome" type="text" placeholder="Ex: lata" oninput="Ingredientes.atualizarPreviewCompra()" />
+            <label class="campo-com-dica">Nome da embalagem<span class="dica-icone" data-dica="Como você chama o que comprou: lata, caixa, pacote, pé, maço, peça, dúzia, fardo, balde…">?</span></label>
+            <input id="compra-emb-nome" type="text" placeholder="Ex: lata, pé, maço" oninput="Ingredientes.atualizarPreviewCompra()" />
           </div>
           <div class="form-group">
             <label class="campo-com-dica">Quantas? *<span class="dica-icone" data-dica="Quantas embalagens você comprou. Ex: 6 latas → 6.">?</span></label>
@@ -685,7 +687,7 @@
             </select>
           </div>
         </div>
-        <small class="campo-hint">Assim você compra por <strong>lata/caixa</strong> mas usa por <strong>g/ml</strong> na ficha — o custo sai certinho.</small>
+        <small class="campo-hint">Assim você compra por <strong>lata/pé/caixa</strong> mas usa por <strong>g/ml</strong> na ficha — o custo sai certinho. Não sabe quanto pesa? Pese uma vez na balança da cozinha e pronto.</small>
       </div>
 
       <div class="form-group">
@@ -850,14 +852,15 @@
                 <option value="L">L — litro</option>
                 <option value="ml">ml — mililitro</option>
                 <option value="un">un — unidade (peça)</option>
-                <option value="emb">📦 lata / caixa / pacote…</option>
+                <option value="emb">📦 lata / pé / maço / pacote…</option>
               </select>
             </div>
           </div>
+          <small class="campo-hint hint-destaque" id="ni-un-hint" style="display:none">🥬 Compra por unidade mas <strong>usa pesando</strong> (alface, costela…)? Escolha <strong>"📦 lata / pé / maço…"</strong> e informe quanto 1 unidade rende — a ficha fica em gramas.</small>
           <div class="form-row" id="ni-emb-campos" style="display:none">
             <div class="form-group">
               <label>Nome da embalagem</label>
-              <input id="ni-emb-nome" type="text" placeholder="Ex: lata" />
+              <input id="ni-emb-nome" type="text" placeholder="Ex: lata, pé, maço" />
             </div>
             <div class="form-group">
               <label class="campo-com-dica">Cada uma tem *<span class="dica-icone" data-dica="Quanto vem DENTRO de 1 embalagem, na unidade que você USA na receita. Ex: lata de milho de 340 g → 340 e g. Na ficha você informa só os gramas usados.">?</span></label>
@@ -901,6 +904,115 @@
         <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-ficha')">Cancelar</button>
         <button type="submit" class="btn-secondary" title="Guarda a ficha para terminar depois — ainda não entra no relatório">Salvar Rascunho</button>
         <button type="submit" class="btn-primary" onclick="Fichas._confirmarAoSalvar=true" title="Salva e já oficializa o CMV — a ficha entra no relatório">Salvar e Confirmar ✓</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: CONVERTER "un" → PESO (alface, costela…) ══════════════════════ -->
+<!-- Fica DEPOIS do modal da ficha no DOM para abrir por cima dele. -->
+<div id="modal-converter-un" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="conv-titulo">⚖️ Usar por peso</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-converter-un')">✕</button>
+    </div>
+    <form id="form-converter-un" onsubmit="ConverterUn.salvar(event)">
+      <input type="hidden" id="conv-id" />
+      <p class="modal-explica">Você compra <strong id="conv-nome">este item</strong> por unidade (pé, maço, peça…) mas <strong>usa pesando</strong> na receita? Informe quanto 1 unidade rende. O sistema converte <strong>preço, estoque e as fichas que já usam o item</strong> — tudo de uma vez, sem perder nada.</p>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="campo-com-dica">1 unidade rende *<span class="dica-icone" data-dica="Pese 1 unidade na balança da cozinha (só a parte aproveitável, se preferir). Ex.: 1 pé de alface ≈ 300 g · 1 peça de costela ≈ 1,2 kg.">?</span></label>
+          <input id="conv-peso" type="number" step="0.001" min="0.001" placeholder="Ex: 300" required oninput="ConverterUn.preview()" />
+        </div>
+        <div class="form-group">
+          <label>Unidade</label>
+          <select id="conv-unidade" onchange="ConverterUn.preview()">
+            <option value="g">g — grama</option>
+            <option value="kg">kg — quilograma</option>
+            <option value="ml">ml — mililitro</option>
+            <option value="L">L — litro</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="campo-com-dica">Como chama 1 unidade?<span class="dica-icone" data-dica="Opcional. O nome do dia a dia: pé, maço, peça, cabeça… Aparece nas dicas da ficha e no estoque (ex.: 600 g ≈ 2 pés).">?</span></label>
+          <input id="conv-nome-un" type="text" placeholder="Ex: pé (opcional)" />
+        </div>
+        <div class="form-group">
+          <label class="campo-com-dica">Pagou por 1 unidade (R$)<span class="dica-icone" data-dica="OPCIONAL. Se preencher, o custo é recalculado com este valor. Se deixar vazio, o sistema converte o preço que o item já tem cadastrado.">?</span></label>
+          <input id="conv-valor" type="number" step="0.01" min="0.01" placeholder="opcional" oninput="ConverterUn.preview()" />
+        </div>
+      </div>
+      <div class="custo-preview" id="conv-preview" style="display:none">
+        Custo calculado: <strong id="conv-preview-valor">—</strong>
+      </div>
+      <small class="campo-hint">Não dá para pesar agora? Sem problema — clique em <strong>Deixar para depois</strong> e, enquanto isso, use frações na ficha: <strong>0,5 = meia unidade</strong>, 0,25 = um quarto.</small>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="ConverterUn.depois()">Deixar para depois</button>
+        <button type="submit" class="btn-primary">Converter ✓</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════ MODAL: PREPARO (sub-receita da casa) ══════════════════════ -->
+<div id="modal-preparo" class="modal hidden">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3 id="modal-preparo-titulo">🍳 Novo Preparo (receita da casa)</h3>
+      <button class="modal-close" onclick="UI.fecharModal('modal-preparo')">✕</button>
+    </div>
+    <form id="form-preparo" onsubmit="Preparos.salvar(event)">
+      <input type="hidden" id="pr-id" />
+      <p class="modal-explica">Costela desfiada, abacaxi caramelizado, molho da casa… Monte a receita <strong>uma vez</strong>: o preparo vira um <strong>ingrediente</strong> para usar nas fichas, com custo por g/ml calculado sozinho — e atualizado automaticamente quando o preço de um insumo muda.</p>
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Nome do preparo *</label>
+          <input id="pr-nome" type="text" placeholder="Ex: Costela desfiada" required />
+        </div>
+        <div class="form-group">
+          <label class="campo-com-dica">Usa em<span class="dica-icone" data-dica="Como você mede o preparo ao montar o lanche: pesando → g, líquido → ml, porção fechada → un.">?</span></label>
+          <select id="pr-unidade" onchange="Preparos.trocarUnidade()">
+            <option value="g">g — grama</option>
+            <option value="ml">ml — mililitro</option>
+            <option value="un">un — porção</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="ingredientes-secao">
+        <div class="ingredientes-header">
+          <div>
+            <h4>Ingredientes da Receita</h4>
+            <small style="color:var(--text-muted);font-size:0.75rem">O que entra para fazer UMA leva do preparo</small>
+          </div>
+          <button type="button" class="btn-add" onclick="Preparos.adicionarComponente()">+ Adicionar</button>
+        </div>
+        <div id="pr-componentes">
+          <div class="ingrediente-vazio">Nenhum ingrediente — clique em "+ Adicionar"</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="campo-com-dica">Rende (depois de pronto) *<span class="dica-icone" data-dica="Quanto a receita rende DEPOIS de pronta — pese o resultado final. Ex.: 3 kg de costela crua viram ≈ 1,4 kg desfiada → digite 1,4 e escolha kg. A perda do cozimento já entra no custo sozinha.">?</span></label>
+          <input id="pr-rend" type="number" step="0.001" min="0.001" placeholder="Ex: 800" required oninput="Preparos.recalcLive()" />
+        </div>
+        <div class="form-group">
+          <label>Unidade</label>
+          <select id="pr-rend-un" onchange="Preparos.recalcLive()"></select>
+        </div>
+      </div>
+
+      <div class="custo-preview" id="pr-custo-live" style="display:none">
+        <span id="pr-custo-texto">—</span>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="UI.fecharModal('modal-preparo')">Cancelar</button>
+        <button type="submit" class="btn-primary">Salvar Preparo</button>
       </div>
     </form>
   </div>
